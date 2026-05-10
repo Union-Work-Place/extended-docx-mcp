@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "extended-docx-mcp-server"
+version = "0.1.0"
+description = "MCP server for reading and editing DOCX content, comments and tracked changes with open-source python-docx/lxml"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "lxml>=5,<6",
+  "mcp>=1.27,<2",
+  "python-docx>=1.1,<2",
+]
+
+[project.scripts]
+extended-docx-mcp = "server:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["app", "config", "server"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

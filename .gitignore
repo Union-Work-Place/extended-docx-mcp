@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+.docx-mcp-backups/
+*.pyc
+
+.vscode/
+.docx-mcp-backups
+files
