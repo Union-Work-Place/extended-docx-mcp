@@ -1,103 +1,63 @@
-# DOCX MCP Server
+# extended-docx-mcp
 
-Локальный MCP-сервер для работы с DOCX через open-source стек `python-docx` + `lxml`.
-Сервер умеет читать структуру документа, менять контент, работать с комментариями,
-таблицами, стилями, секциями и tracked changes без привязки к закрытым Word API.
-
-## Что изменено в рефакторинге
-
-В проекте разнесены перегруженные модули по подпакетам:
-
-- `src/server/ops/text_ops.py` - поиск и замены текста
-- `src/server/ops/structure_ops.py` - абзацы, таблицы, секции, стили и блоки записи
-- `src/server/ops/review/` - отдельные модули для OOXML-утилит, комментариев и правок
-- `src/server/toolsets/content_tools/` - инструменты чтения, редактирования и таблиц
-- `src/server/toolsets/review_tools/` - инструменты комментариев и tracked revisions
-
-Старые точки импорта сохранены как совместимые фасады, поэтому внешний API не ломается.
-
-## План доработок
-
-1. Выровнять точку входа сервера и упаковку.
-2. Разбить монолитные toolsets и ops по ответственности.
-3. Добавить безопасные расширения MCP API без ломки существующих методов.
-4. Привести модульные docstring-и и описания аргументов/результатов к единому виду.
-5. Обновить документацию, примеры `mcp.json` и сценарии запуска через IDE/portable launcher.
+MCP-сервер для чтения и редактирования `.docx` на базе `python-docx` и `lxml`.
+Проект запускает локальный `stdio`-сервер и даёт инструменты для работы со
+структурой документа, таблицами, стилями, комментариями и tracked revisions.
 
 ## Что умеет сервер
 
-- читать DOCX как структурную модель с абзацами, runs, таблицами, секциями, комментариями и правками
-- извлекать окно текста по абзацам с учетом tracked changes
-- искать вхождения текста и абзацы по содержимому или стилю
-- создавать новый DOCX, перезаписывать его или дописывать структурные блоки
-- заменять текст в абзацах и ячейках таблиц в обычном режиме или через tracked revisions
-- вставлять и удалять абзацы
-- читать таблицы, содержимое конкретной ячейки и менять формат таблиц
-- добавлять комментарии к абзацу, диапазону текста, найденному совпадению и отвечать на комментарии
-- перечислять, принимать, отклонять правки и получать детальный контекст по конкретной правке
-- перечислять, создавать и применять стили Word
-- читать и менять параметры секций
+### Метаданные и обзор документа
+- `server_info` — вернуть сведения о сервере и доступных группах инструментов
+- `inspect_document` — собрать краткую сводку по документу: абзацы, таблицы, секции, комментарии и правки
+- `read_docx` и `extract_text` — прочитать структуру документа или диапазон абзацев
+- `find_text_occurrences` и `find_paragraphs` — искать текст и абзацы по содержимому и стилю
 
-## Новые и расширенные MCP методы
+### Редактирование содержимого
+- `write_docx` — создать новый документ из структурных блоков
+- `replace_text` — заменить текст в обычном режиме или через tracked revisions
+- `insert_paragraph` и `delete_paragraph` — вставлять и удалять абзацы
+- `set_paragraph_format` и `set_run_format` — менять форматирование абзацев и runs
 
-Добавлены новые возможности API:
+### Таблицы, стили и секции
+- `list_tables`, `get_table_cell_content`, `insert_table`, `update_table_cell`, `set_table_format`
+- `list_styles`, `create_or_update_style`, `apply_paragraph_style`
+- `list_sections`, `set_section_page_setup`
 
-- `find_paragraphs` - поиск абзацев по тексту, стилю или обоим условиям
-- `get_table_cell_content` - структурированное чтение конкретной ячейки таблицы
-- `get_revision_details` - детальный просмотр одной правки с соседними абзацами
+### Рецензирование
+- `list_comments`, `add_comment`, `add_comment_to_text_range`, `add_comment_to_matching_text`, `add_comment_reply`
+- `list_revisions`, `get_revision_details`, `accept_all_revisions`, `reject_all_revisions`
 
-Расширены параметры существующих методов:
+## Структура проекта
 
-- `read_docx(..., include_text=False)` для легкого summary-режима без полного текста
-- `find_text_occurrences(..., paragraph_index=...)` для локального поиска в одном абзаце
-- `insert_table(..., style_name=..., alignment=...)` для более точной вставки таблиц
-- `list_comments(..., include_replies=False)` для фильтрации только корневых комментариев
-- `set_table_format(..., allow_auto_fit=...)` для управления auto-fit через `python-docx`
+- `src/app.py` — фабрика FastMCP-сервера и основной запуск
+- `src/server.py` — совместимая точка входа для `python -m server`
+- `src/toolsets/` — регистрация MCP-инструментов по группам
+- `src/ops/` — операции над DOCX и OOXML
+- `scripts/setup.ps1` — локальная подготовка Windows-окружения
 
-## Почему этот стек
-
-`python-docx` отвечает за основную документную модель: абзацы, таблицы, стили, секции и запись.
-`lxml` используется там, где нужен прямой контроль над OOXML внутри `.docx`, например для:
-
-- `word/document.xml`
-- `word/comments.xml`
-- `word/settings.xml`
-- relationships и content types
-
-Это позволяет поддерживать open-source реализацию comments и tracked revisions.
-
-## Быстрый старт для разработки
+## Быстрый старт
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
-```
-
-После установки сервер можно запускать так:
-
-```powershell
 .\.venv\Scripts\python.exe -m server
 ```
 
-Каноническая точка входа пакета: `src/server/server.py`.
-
-## Запуск как npx-подобный launcher
-
-Ближайший аналог `npx` для Python-экосистемы - `uvx`.
-
-После публикации пакета в индекс сервер можно запускать без ручной установки зависимостей:
+Альтернатива для Windows:
 
 ```powershell
-uvx --from extended-docx-mcp-server extended-docx-mcp
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 ```
 
-Это тот же сценарий «скачать зависимости и сразу запустить tool», который обычно ждут от `npx`.
+После установки доступен консольный entrypoint:
 
-## Как подключить сервер в IDE
+```powershell
+.\.venv\Scripts\extended-docx-mcp.exe
+```
 
-Любая IDE с поддержкой MCP по `stdio` может поднять сервер через локальный Python или через `uvx`.
+## Подключение в MCP-клиент
 
-Пример локальной разработки через `mcp.json`:
+Пример `mcp.json` для локального запуска:
 
 ```json
 {
@@ -116,65 +76,24 @@ uvx --from extended-docx-mcp-server extended-docx-mcp
 }
 ```
 
-Пример portable-запуска через `uvx`:
+## Поддерживаемые блоки `write_docx`
 
-```json
-{
-  "servers": {
-    "docx-uvx": {
-      "type": "stdio",
-      "command": "uvx",
-      "args": ["--from", "extended-docx-mcp-server", "extended-docx-mcp"],
-      "env": {
-        "EXTENDED_DOCX_MCP_DEFAULT_DIR": "${workspaceFolder}",
-        "PYTHONUNBUFFERED": "1"
-      }
-    }
-  }
-}
-```
+- `paragraph`
+- `heading`
+- `table`
+- `page_break`
+- `section_break`
 
-Для текущего workspace актуальный пример уже лежит в `.vscode/mcp.json`.
-
-## Структурная запись через `write_docx`
-
-`write_docx` принимает список `blocks`. Поддерживаемые типы:
-
-- `paragraph` - обычный абзац с `text` или массивом `runs`
-- `heading` - заголовок с `level` от 1 до 9
-- `table` - таблица с `rows`
-- `page_break` - разрыв страницы
-- `section_break` - разрыв секции: `continuous`, `new_column`, `new_page`, `even_page`, `odd_page`
-
-Пример:
-
-```json
-[
-  { "type": "heading", "level": 1, "text": "Отчет" },
-  {
-    "type": "paragraph",
-    "runs": [
-      { "text": "Важный фрагмент", "bold": true },
-      { "text": " и обычный текст" }
-    ]
-  },
-  {
-    "type": "table",
-    "rows": [
-      ["Показатель", "Значение"],
-      ["Готовность", "Да"]
-    ]
-  }
-]
-```
-
-## Примеры запросов в чате
+## Примеры запросов
 
 - Покажи первые 20 абзацев файла `files/sample.docx`
-- Прочитай `files/sample.docx` как структурную модель, но без полного текста
+- Прочитай `files/sample.docx` как структурную модель без полного текста
 - Найди абзацы со стилем `Heading 2`
 - Замени термин `нейросеть` на `нейронная сеть` в режиме рецензирования
 - Покажи содержимое ячейки таблицы 1, строка 0, столбец 2
 - Добавь комментарий к фразе `цифрового продвижения`
 - Покажи детали правки 3 с одним соседним абзацем контекста
-- Переведи секцию 0 в landscape и включи different first page header/footer
+
+## План работ
+
+Актуальный план вынесен в [`doc/plan.md`](doc/plan.md).
