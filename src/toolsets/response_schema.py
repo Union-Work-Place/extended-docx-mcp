@@ -47,16 +47,16 @@ def error_response(operation: str, exc: Exception) -> dict[str, Any]:
 
     if isinstance(exc, FileNotFoundError):
         error_code = "document_not_found"
-        suggestion = "Проверьте путь к DOCX-файлу и значение EXTENDED_DOCX_MCP_DEFAULT_DIR."
+        suggestion = "Check the DOCX path and the EXTENDED_DOCX_MCP_DEFAULT_DIR setting."
     elif isinstance(exc, IndexError):
         error_code = "index_out_of_range"
-        suggestion = "Проверьте индекс и сначала запросите структуру документа через read_docx или list_*."
+        suggestion = "Check the index and inspect the document structure first with read_docx or a list_* tool."
     elif isinstance(exc, ValueError):
         error_code = "invalid_input"
-        suggestion = "Проверьте параметры вызова и повторите запрос с корректными значениями."
+        suggestion = "Review the tool arguments and retry with valid values."
     else:
         error_code = "internal_error"
-        suggestion = "Повторите запрос или проверьте документ на наличие нестандартной OOXML-структуры."
+        suggestion = "Retry the request or inspect the document for unsupported OOXML structures."
     return {
         "status": "error",
         "operation": operation,
