@@ -69,3 +69,35 @@ async def test_batch_tools_cover_text_format_and_table_updates(invoke_tool, copy
     assert table_result["status"] == "ok"
     assert table_result["result"]["updated"] == 2
     assert verify["result"]["text"] == "Published"
+
+
+async def test_batch_replace_text_rejects_malformed_payloads(invoke_tool, copy_fixture):
+    path = copy_fixture("simple.docx")
+
+    non_object = await invoke_tool("batch_replace_text", path=str(path), replacements=["bad"])
+    missing_find_text = await invoke_tool(
+        "batch_replace_text",
+        path=str(path),
+        replacements=[{"replace_with": "approved"}],
+    )
+
+    assert non_object["status"] == "error"
+    assert non_object["error"]["code"] == "invalid_input"
+    assert missing_find_text["status"] == "error"
+    assert missing_find_text["error"]["code"] == "invalid_input"
+
+
+async def test_batch_update_table_cells_rejects_malformed_payloads(invoke_tool, copy_fixture):
+    path = copy_fixture("with_tables.docx")
+
+    non_object = await invoke_tool("batch_update_table_cells", path=str(path), updates=["bad"])
+    missing_fields = await invoke_tool(
+        "batch_update_table_cells",
+        path=str(path),
+        updates=[{"table_index": 0, "row_index": 1}],
+    )
+
+    assert non_object["status"] == "error"
+    assert non_object["error"]["code"] == "invalid_input"
+    assert missing_fields["status"] == "error"
+    assert missing_fields["error"]["code"] == "invalid_input"

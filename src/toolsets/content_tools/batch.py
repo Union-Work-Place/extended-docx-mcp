@@ -23,6 +23,53 @@ def _get_table_cell(table: Any, row_index: int, cell_index: int) -> Any:
     return row.cells[cell_index]
 
 
+def _validate_replacements_payload(replacements: Any) -> list[dict[str, str]]:
+    if not isinstance(replacements, list) or not replacements:
+        raise ValueError("replacements must contain at least one item")
+    normalized: list[dict[str, str]] = []
+    for index, replacement in enumerate(replacements):
+        if not isinstance(replacement, dict):
+            raise ValueError(f"Replacement at index {index} must be an object")
+        find_text = replacement.get("find_text")
+        if not isinstance(find_text, str) or not find_text:
+            raise ValueError(f"Replacement at index {index} must include a non-empty find_text")
+        normalized.append(
+            {
+                "find_text": find_text,
+                "replace_with": str(replacement.get("replace_with", "")),
+            }
+        )
+    return normalized
+
+
+def _validate_table_updates_payload(updates: Any) -> list[dict[str, Any]]:
+    if not isinstance(updates, list) or not updates:
+        raise ValueError("updates must contain at least one item")
+    normalized: list[dict[str, Any]] = []
+    required_fields = ("table_index", "row_index", "cell_index")
+    for index, update in enumerate(updates):
+        if not isinstance(update, dict):
+            raise ValueError(f"Update at index {index} must be an object")
+        missing_fields = [field for field in required_fields if field not in update]
+        if missing_fields:
+            missing = ", ".join(missing_fields)
+            raise ValueError(f"Update at index {index} is missing required fields: {missing}")
+        try:
+            normalized.append(
+                {
+                    "table_index": int(update["table_index"]),
+                    "row_index": int(update["row_index"]),
+                    "cell_index": int(update["cell_index"]),
+                    "text": str(update.get("text", "")),
+                }
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Update at index {index} must include integer table_index, row_index and cell_index values"
+            ) from exc
+    return normalized
+
+
 def register_batch_tools(server: FastMCP) -> None:
     """Register batch editing helpers."""
 
@@ -30,13 +77,12 @@ def register_batch_tools(server: FastMCP) -> None:
     @tool_response("batch_replace_text")
     def batch_replace_text(
         path: str,
-        replacements: list[dict[str, str]],
+        replacements: list[Any],
         output_path: str | None = None,
         match_case: bool = False,
         find_whole_words_only: bool = False,
     ) -> dict[str, Any]:
-        if not replacements:
-            raise ValueError("replacements must contain at least one item")
+        replacements = _validate_replacements_payload(replacements)
         doc, source_path = load_document(path)
         paragraphs = iter_paragraphs(doc)
         total_replacements = 0
@@ -106,21 +152,20 @@ def register_batch_tools(server: FastMCP) -> None:
     @tool_response("batch_update_table_cells")
     def batch_update_table_cells(
         path: str,
-        updates: list[dict[str, Any]],
+        updates: list[Any],
         output_path: str | None = None,
     ) -> dict[str, Any]:
-        if not updates:
-            raise ValueError("updates must contain at least one item")
+        updates = _validate_table_updates_payload(updates)
         doc, source_path = load_document(path)
         tables = iter_tables(doc)
         for update in updates:
-            table_index = int(update["table_index"])
-            row_index = int(update["row_index"])
-            cell_index = int(update["cell_index"])
+            table_index = update["table_index"]
+            row_index = update["row_index"]
+            cell_index = update["cell_index"]
             if table_index < 0 or table_index >= len(tables):
                 raise IndexError(f"Table index out of range: {table_index}")
             cell = _get_table_cell(tables[table_index], row_index, cell_index)
-            cell.text = str(update.get("text", ""))
+            cell.text = update["text"]
         saved_to = save_document(doc, source_path, output_path)
         return {
             "path": str(source_path),
