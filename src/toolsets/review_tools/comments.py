@@ -261,7 +261,7 @@ def register_comment_tools(server: FastMCP) -> None:
 
         source_path = resolve_path(path)
         content_types, rels, comments_root = ensure_comments_parts(source_path)
-        comments = comments_root.xpath("./w:comment", namespaces={"w": W_NS})
+        comments = comments_root.findall(f"{{{W_NS}}}comment")
         if comment_index < 0 or comment_index >= len(comments):
             raise IndexError(f"Comment index out of range: {comment_index}")
         parent_id = int(comments[comment_index].get(w_attr("id"), "0"))

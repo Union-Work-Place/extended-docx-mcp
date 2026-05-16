@@ -267,7 +267,7 @@ def apply_run_format(run: Any, run_data: dict[str, Any]) -> None:
         run.font.all_caps = bool(run_data["all_caps"])
 
 
-def populate_paragraph(paragraph: Paragraph, block: dict[str, Any], default_style_name: str | None = None) -> Paragraph:
+def apply_block_to_paragraph(paragraph: Paragraph, block: dict[str, Any], default_style_name: str | None = None) -> Paragraph:
     """Populate an existing paragraph from a structured block payload.
 
     Args:
@@ -306,7 +306,7 @@ def write_paragraph_block(doc: Any, block: dict[str, Any], default_style_name: s
         Newly created paragraph object.
     """
 
-    return populate_paragraph(doc.add_paragraph(), block, default_style_name)
+    return apply_block_to_paragraph(doc.add_paragraph(), block, default_style_name)
 
 
 def write_cell_value(cell: Any, cell_value: Any) -> None:
@@ -429,12 +429,12 @@ def insert_structured_block_after(paragraph: Paragraph, block: dict[str, Any], b
 
     block_type = str(block.get("type", "paragraph")).lower()
     if block_type == "paragraph":
-        return populate_paragraph(insert_paragraph_after(paragraph, ""), block)
+        return apply_block_to_paragraph(insert_paragraph_after(paragraph, ""), block)
     if block_type == "heading":
         level = int(block.get("level", 1))
         if level < 1 or level > 9:
             raise ValueError("Heading level must be between 1 and 9")
-        return populate_paragraph(insert_paragraph_after(paragraph, ""), block, default_style_name=f"Heading {level}")
+        return apply_block_to_paragraph(insert_paragraph_after(paragraph, ""), block, default_style_name=f"Heading {level}")
     if block_type == "table":
         rows = block.get("rows")
         if not isinstance(rows, list) or not rows:

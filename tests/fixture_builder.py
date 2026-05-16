@@ -113,7 +113,8 @@ async def _apply_review_operations(path: Path) -> None:
     for name, arguments in operations:
         _, result = await server.call_tool(name, arguments)
         if result["status"] != "ok":
-            raise RuntimeError(f"Failed to build review fixture with {name}: {result}")
+            detail = result.get("error", {}).get("message", result)
+            raise RuntimeError(f"Failed to build review fixture with {name}: {detail}")
 
 
 def build_review(path: Path) -> Path:
