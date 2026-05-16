@@ -267,19 +267,18 @@ def apply_run_format(run: Any, run_data: dict[str, Any]) -> None:
         run.font.all_caps = bool(run_data["all_caps"])
 
 
-def write_paragraph_block(doc: Any, block: dict[str, Any], default_style_name: str | None = None) -> Paragraph:
-    """Append a structured paragraph block to a document.
+def populate_paragraph(paragraph: Paragraph, block: dict[str, Any], default_style_name: str | None = None) -> Paragraph:
+    """Populate an existing paragraph from a structured block payload.
 
     Args:
-        doc: ``python-docx`` document instance.
+        paragraph: Paragraph to populate.
         block: Structured paragraph or heading block.
         default_style_name: Optional fallback style name.
 
     Returns:
-        Newly created paragraph object.
+        The populated paragraph object.
     """
 
-    paragraph = doc.add_paragraph()
     apply_paragraph_format(paragraph, block, default_style_name)
     runs = block.get("runs")
     if runs is not None:
@@ -293,6 +292,21 @@ def write_paragraph_block(doc: Any, block: dict[str, Any], default_style_name: s
     else:
         paragraph.add_run(str(block.get("text", "")))
     return paragraph
+
+
+def write_paragraph_block(doc: Any, block: dict[str, Any], default_style_name: str | None = None) -> Paragraph:
+    """Append a structured paragraph block to a document.
+
+    Args:
+        doc: ``python-docx`` document instance.
+        block: Structured paragraph or heading block.
+        default_style_name: Optional fallback style name.
+
+    Returns:
+        Newly created paragraph object.
+    """
+
+    return populate_paragraph(doc.add_paragraph(), block, default_style_name)
 
 
 def write_cell_value(cell: Any, cell_value: Any) -> None:
@@ -390,6 +404,42 @@ def insert_paragraph_after(paragraph: Paragraph, text: str) -> Paragraph:
     new_paragraph = Paragraph(inserted, paragraph._parent)
     new_paragraph.add_run(text)
     return new_paragraph
+
+
+def normalize_paragraph_range(total: int, start_paragraph: int, end_paragraph: int) -> tuple[int, int]:
+    """Validate and normalize an inclusive paragraph range."""
+
+    if start_paragraph < 0 or end_paragraph < 0:
+        raise IndexError("Paragraph range indices must be >= 0")
+    if start_paragraph > end_paragraph:
+        raise ValueError("start_paragraph must be <= end_paragraph")
+    if end_paragraph >= total:
+        raise IndexError(f"Paragraph index out of range: {end_paragraph}")
+    return start_paragraph, end_paragraph
+
+
+def insert_structured_block_after(paragraph: Paragraph, block: dict[str, Any], index: int) -> Any:
+    """Insert one supported structured block directly after a paragraph."""
+
+    block_type = str(block.get("type", "paragraph")).lower()
+    if block_type == "paragraph":
+        return populate_paragraph(insert_paragraph_after(paragraph, ""), block)
+    if block_type == "heading":
+        level = int(block.get("level", 1))
+        if level < 1 or level > 9:
+            raise ValueError("Heading level must be between 1 and 9")
+        return populate_paragraph(insert_paragraph_after(paragraph, ""), block, default_style_name=f"Heading {level}")
+    if block_type == "table":
+        rows = block.get("rows")
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("Table block must contain a non-empty rows list")
+        inserted = insert_table_after(paragraph, rows)
+        if block.get("style_name") is not None:
+            inserted.style = str(block["style_name"])
+        if block.get("alignment") is not None:
+            inserted.alignment = normalize_mapping_value(str(block["alignment"]), PX_TABLE_ALIGNMENTS, "table alignment")
+        return inserted
+    raise ValueError(f"Unsupported block type at index {index}: {block_type}")
 
 
 def validate_structured_blocks(blocks: list[dict[str, Any]]) -> None:
@@ -563,4 +613,3 @@ def ensure_style_type_is_paragraph(style: Any) -> None:
 
     if style.type != WD_STYLE_TYPE.PARAGRAPH:
         raise ValueError("Paragraph formatting can only be applied to paragraph styles")
-

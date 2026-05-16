@@ -73,3 +73,18 @@
   }
 }
 ```
+
+## `batch_update_table_cells`
+
+```json
+{
+  "name": "batch_update_table_cells",
+  "arguments": {
+    "path": "files/sample.docx",
+    "updates": [
+      {"table_index": 0, "row_index": 1, "cell_index": 1, "text": "150"},
+      {"table_index": 0, "row_index": 1, "cell_index": 2, "text": "168"}
+    ]
+  }
+}
+```

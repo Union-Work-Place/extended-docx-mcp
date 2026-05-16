@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from pathlib import Path
 
 from docx import Document
@@ -151,3 +152,6 @@ def generate_all_fixtures(target_dir: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     for filename, builder in builders.items():
         builder(target_dir / filename)
+    backup_dir = target_dir / ".extended-docx-mcp-backups"
+    if backup_dir.exists():
+        shutil.rmtree(backup_dir)
