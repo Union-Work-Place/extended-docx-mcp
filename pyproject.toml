@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "extended-docx-mcp-server"
 version = "0.1.0"
-description = "MCP server for reading and editing DOCX content, comments and tracked changes with open-source python-docx/lxml"
+description = "Cross-platform MCP server for reading, editing, tables, comments and tracked DOCX revisions with python-docx and lxml"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
