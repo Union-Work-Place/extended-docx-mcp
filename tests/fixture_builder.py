@@ -8,6 +8,7 @@ from pathlib import Path
 
 from docx import Document
 from docx.enum.section import WD_ORIENT, WD_SECTION_START
+from docx.enum.style import WD_STYLE_TYPE
 from docx.shared import Pt
 
 from app import create_server
@@ -38,7 +39,7 @@ def build_simple(path: Path) -> Path:
 
 def build_with_styles(path: Path) -> Path:
     doc = Document()
-    style = doc.styles.add_style("Callout", 1)
+    style = doc.styles.add_style("Callout", WD_STYLE_TYPE.PARAGRAPH)
     style.font.name = "Arial"
     style.font.size = Pt(14)
     style.font.bold = True
@@ -126,7 +127,7 @@ def build_complex(path: Path) -> Path:
     doc.add_heading("Complex sample", level=1)
     doc.add_paragraph("Alpha project budget is 100.")
     doc.add_paragraph("The draft conclusion needs review.")
-    callout = doc.styles.add_style("ComplexCallout", 1)
+    callout = doc.styles.add_style("ComplexCallout", WD_STYLE_TYPE.PARAGRAPH)
     callout.font.bold = True
     styled = doc.add_paragraph("Styled paragraph in complex sample.")
     styled.style = "ComplexCallout"

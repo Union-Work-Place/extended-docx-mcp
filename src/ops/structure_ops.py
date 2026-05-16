@@ -418,8 +418,14 @@ def normalize_paragraph_range(total: int, start_paragraph: int, end_paragraph: i
     return start_paragraph, end_paragraph
 
 
-def insert_structured_block_after(paragraph: Paragraph, block: dict[str, Any], index: int) -> Any:
-    """Insert one supported structured block directly after a paragraph."""
+def insert_structured_block_after(paragraph: Paragraph, block: dict[str, Any], block_index: int) -> Any:
+    """Insert one supported structured block directly after a paragraph.
+
+    Args:
+        paragraph: Paragraph after which the block should be inserted.
+        block: Structured block descriptor.
+        block_index: Block index used in validation messages.
+    """
 
     block_type = str(block.get("type", "paragraph")).lower()
     if block_type == "paragraph":
@@ -439,7 +445,7 @@ def insert_structured_block_after(paragraph: Paragraph, block: dict[str, Any], i
         if block.get("alignment") is not None:
             inserted.alignment = normalize_mapping_value(str(block["alignment"]), PX_TABLE_ALIGNMENTS, "table alignment")
         return inserted
-    raise ValueError(f"Unsupported block type at index {index}: {block_type}")
+    raise ValueError(f"Unsupported block type at index {block_index}: {block_type}")
 
 
 def validate_structured_blocks(blocks: list[dict[str, Any]]) -> None:
