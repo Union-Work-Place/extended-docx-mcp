@@ -23,3 +23,6 @@ py-modules = ["app", "config", "server"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -6,6 +6,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from config import W
 from ops.package_io import read_zip_xml, resolve_path, save_zip_parts, serialize_xml
 from ops.review import (
     add_comment_node,
