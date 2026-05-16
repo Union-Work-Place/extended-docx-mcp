@@ -10,6 +10,8 @@ from docx import Document
 from docx.enum.section import WD_ORIENT, WD_SECTION_START
 from docx.shared import Pt
 
+from app import create_server
+
 
 def _save(doc: Document, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -74,8 +76,6 @@ def build_with_tables(path: Path) -> Path:
 
 
 async def _apply_review_operations(path: Path) -> None:
-    from app import create_server
-
     server = create_server()
     operations = [
         (

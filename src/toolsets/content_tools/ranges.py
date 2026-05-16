@@ -123,5 +123,5 @@ def register_range_tools(server: FastMCP) -> None:
             "engine": "python-docx",
             "after_paragraph": actual_index,
             "block_type": str(block.get("type", "paragraph")).lower(),
-            "inserted_summary": getattr(inserted, "text", None),
+            "inserted_text": getattr(inserted, "text", None),
         }
