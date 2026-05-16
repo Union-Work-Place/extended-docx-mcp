@@ -84,6 +84,23 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 
 Дополнительные готовые конфигурации вынесены в [`doc/examples-mcp-client-config.md`](doc/examples-mcp-client-config.md).
 
+## Формат ответов инструментов
+
+Каждый инструмент возвращает единый envelope:
+
+```json
+{
+  "status": "ok",
+  "operation": "tool_name",
+  "result": {},
+  "metadata": {
+    "timestamp": "2026-05-16T13:44:07+00:00"
+  }
+}
+```
+
+При ошибке сервер возвращает `status: "error"` и объект `error` с кодом, сообщением и подсказкой для исправления параметров или пути к документу.
+
 ## Поддерживаемые блоки `write_docx`
 
 - `paragraph`

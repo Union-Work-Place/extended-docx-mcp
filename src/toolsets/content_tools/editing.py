@@ -36,6 +36,7 @@ from ops.structure_ops import (
 )
 from ops.text_ops import normalize_mapping_value, replace_in_paragraph_plain
 from config import PX_ALIGNMENTS
+from toolsets.response_schema import tool_response
 
 
 def register_content_editing_tools(server: FastMCP) -> None:
@@ -46,6 +47,7 @@ def register_content_editing_tools(server: FastMCP) -> None:
     """
 
     @server.tool()
+    @tool_response("write_docx")
     def write_docx(
         path: str,
         blocks: list[dict[str, Any]],
@@ -100,6 +102,7 @@ def register_content_editing_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("replace_text")
     def replace_text(
         path: str,
         find_text: str,
@@ -194,6 +197,7 @@ def register_content_editing_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("insert_paragraph")
     def insert_paragraph(
         path: str,
         text: str,
@@ -277,6 +281,7 @@ def register_content_editing_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("delete_paragraph")
     def delete_paragraph(
         path: str,
         paragraph_index: int,
@@ -348,6 +353,7 @@ def register_content_editing_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("set_paragraph_format")
     def set_paragraph_format(
         path: str,
         output_path: str | None = None,
@@ -401,6 +407,7 @@ def register_content_editing_tools(server: FastMCP) -> None:
         return {"path": str(source_path), "saved_to": str(saved_to), "engine": "python-docx", "paragraph_index": actual_index, "text": paragraph.text}
 
     @server.tool()
+    @tool_response("set_run_format")
     def set_run_format(
         path: str,
         paragraph_index: int,
@@ -455,4 +462,3 @@ def register_content_editing_tools(server: FastMCP) -> None:
             "run_index": run_index,
             "text": run.text,
         }
-

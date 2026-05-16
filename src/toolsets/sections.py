@@ -8,6 +8,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ops.document_ops import section_to_dict, update_section_page_setup
 from ops.package_io import load_document, save_document
+from toolsets.response_schema import tool_response
 
 
 def register_section_tools(server: FastMCP) -> None:
@@ -18,6 +19,7 @@ def register_section_tools(server: FastMCP) -> None:
     """
 
     @server.tool()
+    @tool_response("list_sections")
     def list_sections(path: str) -> dict[str, Any]:
         """List document sections and page setup information.
 
@@ -32,6 +34,7 @@ def register_section_tools(server: FastMCP) -> None:
         return {"path": str(resolved), "engine": "python-docx", "sections": [section_to_dict(section, index) for index, section in enumerate(doc.sections)]}
 
     @server.tool()
+    @tool_response("set_section_page_setup")
     def set_section_page_setup(
         path: str,
         section_index: int,
@@ -90,5 +93,4 @@ def register_section_tools(server: FastMCP) -> None:
             "section": section_to_dict(section, section_index),
             "unsupported_options_ignored": unsupported,
         }
-
 

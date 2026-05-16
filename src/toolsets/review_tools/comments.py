@@ -18,6 +18,7 @@ from ops.review import (
     next_comment_id,
     w_attr,
 )
+from toolsets.response_schema import tool_response
 
 
 def _resolve_comment_anchor(root: Any, paragraph_index: int | None, anchor_text: str | None) -> tuple[int, Any]:
@@ -53,6 +54,7 @@ def register_comment_tools(server: FastMCP) -> None:
     """
 
     @server.tool()
+    @tool_response("add_comment")
     def add_comment(
         path: str,
         comment_text: str,
@@ -106,6 +108,7 @@ def register_comment_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("add_comment_to_text_range")
     def add_comment_to_text_range(
         path: str,
         comment_text: str,
@@ -165,6 +168,7 @@ def register_comment_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("add_comment_to_matching_text")
     def add_comment_to_matching_text(
         path: str,
         target_text: str,
@@ -231,6 +235,7 @@ def register_comment_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("add_comment_reply")
     def add_comment_reply(
         path: str,
         comment_index: int,
@@ -281,6 +286,7 @@ def register_comment_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("list_comments")
     def list_comments(path: str, include_replies: bool = True) -> dict[str, Any]:
         """Return comments and replies with metadata.
 
@@ -297,4 +303,3 @@ def register_comment_tools(server: FastMCP) -> None:
         if not include_replies:
             comments = [comment for comment in comments if comment.get("parent_id") is None]
         return {"path": str(resolved), "engine": "lxml-ooxml", "comments": comments}
-

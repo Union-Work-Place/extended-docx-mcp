@@ -16,6 +16,7 @@ from ops.document_ops import (
     style_to_dict,
 )
 from ops.package_io import load_document, save_document
+from toolsets.response_schema import tool_response
 
 
 def register_style_tools(server: FastMCP) -> None:
@@ -26,6 +27,7 @@ def register_style_tools(server: FastMCP) -> None:
     """
 
     @server.tool()
+    @tool_response("list_styles")
     def list_styles(path: str, style_type: str | None = None, include_builtin: bool = True) -> dict[str, Any]:
         """List Word styles available in the document.
 
@@ -52,6 +54,7 @@ def register_style_tools(server: FastMCP) -> None:
         return {"path": str(resolved), "engine": "python-docx", "styles": styles}
 
     @server.tool()
+    @tool_response("create_or_update_style")
     def create_or_update_style(
         path: str,
         style_name: str,
@@ -128,6 +131,7 @@ def register_style_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("apply_paragraph_style")
     def apply_paragraph_style(
         path: str,
         style_name: str,
@@ -162,5 +166,4 @@ def register_style_tools(server: FastMCP) -> None:
             "style_name": style_name,
             "text": paragraph.text,
         }
-
 

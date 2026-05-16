@@ -29,6 +29,7 @@ from ops.structure_ops import (
     write_cell_value,
 )
 from ops.text_ops import normalize_mapping_value
+from toolsets.response_schema import tool_response
 
 
 def _get_table_cell(table: Any, row_index: int, cell_index: int) -> Any:
@@ -59,6 +60,7 @@ def register_table_tools(server: FastMCP) -> None:
     """
 
     @server.tool()
+    @tool_response("list_tables")
     def list_tables(path: str, include_cells: bool = True) -> dict[str, Any]:
         """List document tables with optional cell contents.
 
@@ -75,6 +77,7 @@ def register_table_tools(server: FastMCP) -> None:
         return {"path": str(resolved), "engine": "python-docx", "tables": [table_to_dict(table, index, include_cells) for index, table in enumerate(tables)]}
 
     @server.tool()
+    @tool_response("get_table_cell_content")
     def get_table_cell_content(
         path: str,
         table_index: int,
@@ -112,6 +115,7 @@ def register_table_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("insert_table")
     def insert_table(
         path: str,
         data: list[list[str]],
@@ -163,6 +167,7 @@ def register_table_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("update_table_cell")
     def update_table_cell(
         path: str,
         table_index: int,
@@ -246,6 +251,7 @@ def register_table_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("set_table_format")
     def set_table_format(
         path: str,
         table_index: int,
@@ -300,4 +306,3 @@ def register_table_tools(server: FastMCP) -> None:
                 "left_indent_points": left_indent_points is not None,
             },
         }
-

@@ -11,6 +11,7 @@ from config import DEFAULT_DIR, PACKAGE_NAME
 from ops.document_ops import iter_paragraphs, iter_tables
 from ops.package_io import load_document
 from ops.review_ops import list_comments_xml, list_revisions_xml, settings_has_track_revisions
+from toolsets.response_schema import tool_response
 
 
 def package_version() -> str:
@@ -34,6 +35,7 @@ def register_meta_tools(server: FastMCP) -> None:
     """
 
     @server.tool()
+    @tool_response("server_info")
     def server_info() -> dict[str, Any]:
         """Return server capabilities and runtime metadata.
 
@@ -68,6 +70,7 @@ def register_meta_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("inspect_document")
     def inspect_document(path: str) -> dict[str, Any]:
         """Return high-level document metadata and review counters.
 
@@ -89,5 +92,4 @@ def register_meta_tools(server: FastMCP) -> None:
             "revisions": len(list_revisions_xml(resolved)),
             "has_track_revisions_flag": settings_has_track_revisions(resolved),
         }
-
 
