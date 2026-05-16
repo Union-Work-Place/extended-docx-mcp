@@ -6,10 +6,10 @@ from typing import Any
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-
 from app import create_server
 from tests.fixture_builder import generate_all_fixtures
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="session")
