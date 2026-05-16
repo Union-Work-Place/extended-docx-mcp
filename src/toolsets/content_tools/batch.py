@@ -24,6 +24,19 @@ def _get_table_cell(table: Any, row_index: int, cell_index: int) -> Any:
 
 
 def _validate_replacements_payload(replacements: Any) -> list[dict[str, str]]:
+    """Validate and normalize batch text replacement payloads.
+
+    Args:
+        replacements: Raw replacement list supplied to ``batch_replace_text``.
+
+    Returns:
+        Normalized replacement dictionaries with ``find_text`` and ``replace_with`` keys.
+
+    Raises:
+        ValueError: The payload is not a non-empty list of objects with non-empty
+            string ``find_text`` values.
+    """
+
     if not isinstance(replacements, list) or not replacements:
         raise ValueError("replacements must contain at least one item")
     normalized: list[dict[str, str]] = []
@@ -43,6 +56,20 @@ def _validate_replacements_payload(replacements: Any) -> list[dict[str, str]]:
 
 
 def _validate_table_updates_payload(updates: Any) -> list[dict[str, Any]]:
+    """Validate and normalize batch table cell update payloads.
+
+    Args:
+        updates: Raw update list supplied to ``batch_update_table_cells``.
+
+    Returns:
+        Normalized update dictionaries containing integer ``table_index``,
+        ``row_index`` and ``cell_index`` values plus string ``text``.
+
+    Raises:
+        ValueError: The payload is not a non-empty list of objects with the
+            required table coordinate fields.
+    """
+
     if not isinstance(updates, list) or not updates:
         raise ValueError("updates must contain at least one item")
     normalized: list[dict[str, Any]] = []
