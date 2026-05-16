@@ -80,7 +80,7 @@ def tool_response(operation: str) -> Callable[[Callable[..., Any]], Callable[...
         def wrapped(*args: Any, **kwargs: Any) -> dict[str, Any]:
             try:
                 return success_response(operation, func(*args, **kwargs))
-            except Exception as exc:  # pragma: no cover - exercised via integration tests
+            except (FileNotFoundError, IndexError, RuntimeError, ValueError) as exc:  # pragma: no cover - integration-tested
                 return error_response(operation, exc)
 
         return wrapped

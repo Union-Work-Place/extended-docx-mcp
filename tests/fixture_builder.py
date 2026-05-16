@@ -113,8 +113,9 @@ async def _apply_review_operations(path: Path) -> None:
     for name, arguments in operations:
         _, result = await server.call_tool(name, arguments)
         if result["status"] != "ok":
+            error_code = result.get("error", {}).get("code", "unknown")
             detail = result.get("error", {}).get("message", result)
-            raise RuntimeError(f"Failed to build review fixture with {name}: {detail}")
+            raise RuntimeError(f"Failed to build review fixture with {name} (code: {error_code}): {detail}")
 
 
 def build_review(path: Path) -> Path:
@@ -152,8 +153,10 @@ def generate_all_fixtures(target_dir: Path) -> None:
         "complex.docx": build_complex,
     }
     target_dir.mkdir(parents=True, exist_ok=True)
+    backup_dir = target_dir / ".extended-docx-mcp-backups"
+    if all((target_dir / filename).exists() for filename in builders) and not backup_dir.exists():
+        return
     for filename, builder in builders.items():
         builder(target_dir / filename)
-    backup_dir = target_dir / ".extended-docx-mcp-backups"
     if backup_dir.exists():
         shutil.rmtree(backup_dir)
