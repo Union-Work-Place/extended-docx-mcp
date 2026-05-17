@@ -8,12 +8,12 @@ from typing import Any
 from lxml import etree
 
 from config import W
-from ops.package_io import read_zip_xml, serialize_xml
+from ops.package_io import load_document, read_zip_xml, serialize_xml
 from ops.review.xml_utils import (
     REVISION_NAMESPACES,
     REVISION_XPATH,
+    canonical_paragraph_refs,
     clear_paragraph_content,
-    iter_document_paragraphs_xml,
     new_text_run,
     new_w_element,
     paragraph_revision_view,
@@ -360,6 +360,7 @@ def revision_details_xml(path: Any, revision_index: int, context_paragraphs: int
     root = read_zip_xml(path, "word/document.xml")
     if root is None:
         raise ValueError("DOCX package is missing word/document.xml")
+    doc, _ = load_document(str(path))
     revisions = root.xpath(REVISION_XPATH, namespaces=REVISION_NAMESPACES)
     if revision_index >= len(revisions):
         raise IndexError(f"Revision index out of range: {revision_index}")
@@ -367,15 +368,17 @@ def revision_details_xml(path: Any, revision_index: int, context_paragraphs: int
     paragraph = revision
     while paragraph is not None and paragraph.tag != f"{W}p":
         paragraph = paragraph.getparent()
-    paragraph_nodes = iter_document_paragraphs_xml(root)
-    paragraph_index = paragraph_nodes.index(paragraph) if paragraph in paragraph_nodes else None
+    paragraph_refs = canonical_paragraph_refs(doc, root)
+    paragraph_by_id = {id(ref.paragraph): ref for ref in paragraph_refs}
+    paragraph_ref = paragraph_by_id.get(id(paragraph)) if paragraph is not None else None
+    paragraph_index = paragraph_ref.index if paragraph_ref is not None else None
     details = revision_to_dict(revision, revision_index)
     if paragraph is None or paragraph_index is None:
         details["paragraph"] = None
         details["context"] = []
         return details
     context_start = max(0, paragraph_index - context_paragraphs)
-    context_end = min(len(paragraph_nodes), paragraph_index + context_paragraphs + 1)
+    context_end = min(len(paragraph_refs), paragraph_index + context_paragraphs + 1)
     details["paragraph"] = {
         "index": paragraph_index,
         "visible_text": paragraph_revision_view(paragraph)["visible_text"],
@@ -383,12 +386,11 @@ def revision_details_xml(path: Any, revision_index: int, context_paragraphs: int
     }
     details["context"] = [
         {
-            "index": index,
-            "visible_text": paragraph_revision_view(node)["visible_text"],
-            "annotated_text": paragraph_revision_view(node)["annotated_text"],
-            "contains_revision": index == paragraph_index,
+            "index": ref.index,
+            "visible_text": paragraph_revision_view(ref.paragraph)["visible_text"],
+            "annotated_text": paragraph_revision_view(ref.paragraph)["annotated_text"],
+            "contains_revision": ref.index == paragraph_index,
         }
-        for index, node in enumerate(paragraph_nodes[context_start:context_end], start=context_start)
+        for ref in paragraph_refs[context_start:context_end]
     ]
     return details
-

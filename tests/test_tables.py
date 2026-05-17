@@ -47,3 +47,24 @@ async def test_table_editing_tools(invoke_tool, copy_fixture):
     assert updated["result"]["text"] == "110"
     assert formatted["status"] == "ok"
     assert formatted["result"]["table"]["alignment"] == "center"
+
+
+async def test_insert_table_normalizes_fractional_section_margins(invoke_tool, copy_fixture):
+    path = copy_fixture("fractional_sections.docx")
+
+    inserted = await invoke_tool(
+        "insert_table",
+        path=str(path),
+        after_paragraph=0,
+        data=[["A", "B"], ["1", "2"]],
+        track_changes=False,
+    )
+    listed = await invoke_tool("list_tables", path=str(path))
+    read = await invoke_tool("read_docx", path=str(path), include_sections=True, include_tables=True, include_comments=False, include_revisions=False)
+
+    assert inserted["status"] == "ok"
+    assert inserted["result"]["rows"] == 2
+    assert listed["status"] == "ok"
+    assert listed["result"]["tables"]
+    assert read["status"] == "ok"
+    assert read["result"]["counts"]["tables"] >= 1

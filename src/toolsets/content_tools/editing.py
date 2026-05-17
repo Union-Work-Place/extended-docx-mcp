@@ -15,6 +15,7 @@ from docx.shared import Pt
 from ops.package_io import load_document, load_or_create_document, read_zip_xml, resolve_path, save_document, save_zip_parts, serialize_xml
 from ops.review import (
     append_revision_pair,
+    canonical_paragraph_refs,
     clear_paragraph_content,
     enable_track_revisions_part,
     iter_document_paragraphs_xml,
@@ -224,17 +225,18 @@ def register_content_editing_tools(server: FastMCP) -> None:
 
         if track_changes:
             source_path = resolve_path(path)
+            doc, _ = load_document(path)
             root = read_zip_xml(source_path, "word/document.xml")
             if root is None:
                 raise ValueError("DOCX package is missing word/document.xml")
-            paragraphs = iter_document_paragraphs_xml(root)
+            paragraphs = canonical_paragraph_refs(doc, root)
             if after_paragraph is not None:
                 if after_paragraph < 0 or after_paragraph >= len(paragraphs):
                     raise IndexError(f"Paragraph index out of range: {after_paragraph}")
-                target = paragraphs[after_paragraph]
+                target = paragraphs[after_paragraph].paragraph
                 actual_index = after_paragraph
             elif anchor_text:
-                matches = [(index, paragraph) for index, paragraph in enumerate(paragraphs) if anchor_text in "".join(paragraph.itertext())]
+                matches = [(ref.index, ref.paragraph) for ref in paragraphs if anchor_text in "".join(ref.paragraph.itertext())]
                 if not matches:
                     raise ValueError(f"Anchor text was not found in document: {anchor_text}")
                 actual_index, target = matches[0]
@@ -304,13 +306,14 @@ def register_content_editing_tools(server: FastMCP) -> None:
 
         if track_changes:
             source_path = resolve_path(path)
+            doc, _ = load_document(path)
             root = read_zip_xml(source_path, "word/document.xml")
             if root is None:
                 raise ValueError("DOCX package is missing word/document.xml")
-            paragraphs = iter_document_paragraphs_xml(root)
+            paragraphs = canonical_paragraph_refs(doc, root)
             if paragraph_index < 0 or paragraph_index >= len(paragraphs):
                 raise IndexError(f"Paragraph index out of range: {paragraph_index}")
-            paragraph = paragraphs[paragraph_index]
+            paragraph = paragraphs[paragraph_index].paragraph
             deleted_text = "".join(paragraph.itertext())
             clear_paragraph_content(paragraph)
             deletion = new_w_element(

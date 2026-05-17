@@ -8,6 +8,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ops.package_io import load_document, read_zip_xml, resolve_path
 from ops.review import (
+    canonical_paragraph_xml,
     iter_document_paragraphs_xml,
     list_comments_xml,
     list_revisions_xml,
@@ -64,7 +65,7 @@ def register_content_discovery_tools(server: FastMCP) -> None:
         doc, resolved = load_document(path)
         paragraphs = iter_paragraphs(doc)
         document_root = read_zip_xml(resolved, "word/document.xml")
-        paragraph_xml = iter_document_paragraphs_xml(document_root) if document_root is not None else []
+        paragraph_xml = canonical_paragraph_xml(doc, document_root)
         end = min(len(paragraphs), start_paragraph + paragraph_count)
         paragraph_items = []
         for index in range(start_paragraph, end):
@@ -133,7 +134,7 @@ def register_content_discovery_tools(server: FastMCP) -> None:
         doc, resolved = load_document(path)
         paragraphs = iter_paragraphs(doc)
         document_root = read_zip_xml(resolved, "word/document.xml")
-        paragraph_xml = iter_document_paragraphs_xml(document_root) if document_root is not None else []
+        paragraph_xml = canonical_paragraph_xml(doc, document_root)
         end = min(len(paragraphs), start_paragraph + count)
         items = []
         for index in range(start_paragraph, end):

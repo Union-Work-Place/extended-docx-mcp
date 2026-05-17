@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass
 from typing import Any
 
 from lxml import etree
 
 from config import NSMAP, W, XML_NS
+from ops.structure_ops import iter_paragraphs
+
+
+@dataclass(frozen=True)
+class CanonicalParagraphRef:
+    """Canonical paragraph descriptor shared across python-docx and OOXML paths."""
+
+    index: int
+    xml_path: str
+    paragraph: etree._Element
 
 
 def w_attr(name: str) -> str:
@@ -169,6 +180,29 @@ def iter_document_paragraphs_xml(document_root: etree._Element) -> list[etree._E
     return list(body.iter(f"{W}p"))
 
 
+def canonical_paragraph_refs(doc: Any, document_root: etree._Element | None) -> list[CanonicalParagraphRef]:
+    """Return paragraph XML nodes in the canonical ``iter_paragraphs(doc)`` order."""
+
+    if document_root is None:
+        return []
+    tree = document_root.getroottree()
+    xml_by_path = {tree.getpath(paragraph): paragraph for paragraph in iter_document_paragraphs_xml(document_root)}
+    refs: list[CanonicalParagraphRef] = []
+    for index, paragraph in enumerate(iter_paragraphs(doc)):
+        xml_path = paragraph._p.getroottree().getpath(paragraph._p)
+        xml_paragraph = xml_by_path.get(xml_path)
+        if xml_paragraph is None:
+            continue
+        refs.append(CanonicalParagraphRef(index=index, xml_path=xml_path, paragraph=xml_paragraph))
+    return refs
+
+
+def canonical_paragraph_xml(doc: Any, document_root: etree._Element | None) -> list[etree._Element]:
+    """Return paragraph XML nodes in the canonical ``iter_paragraphs(doc)`` order."""
+
+    return [ref.paragraph for ref in canonical_paragraph_refs(doc, document_root)]
+
+
 def iter_document_tables_xml(document_root: etree._Element) -> list[etree._Element]:
     """Return all table nodes from ``word/document.xml``.
 
@@ -202,4 +236,3 @@ REVISION_XPATH = ".//w:ins | .//w:del"
 
 REVISION_NAMESPACES = NSMAP
 """Namespace mapping used by revision XPath helpers."""
-

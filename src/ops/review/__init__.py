@@ -27,6 +27,8 @@ from ops.review.revisions import (
 from ops.review.xml_utils import (
     REVISION_NAMESPACES,
     REVISION_XPATH,
+    canonical_paragraph_refs,
+    canonical_paragraph_xml,
     child_plain_text,
     clear_paragraph_content,
     iter_document_paragraphs_xml,
@@ -46,6 +48,8 @@ __all__ = [
     "anchor_comment_to_paragraph",
     "anchor_comment_to_range",
     "append_revision_pair",
+    "canonical_paragraph_refs",
+    "canonical_paragraph_xml",
     "child_plain_text",
     "clear_paragraph_content",
     "comment_reference_run",
@@ -73,4 +77,3 @@ __all__ = [
     "w_attr",
     "xml_space_attr",
 ]
-

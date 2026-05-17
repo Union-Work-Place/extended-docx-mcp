@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 
 from docx import Document
 from docx.enum.section import WD_ORIENT, WD_SECTION_START
 from docx.enum.style import WD_STYLE_TYPE
 from docx.shared import Pt
+from lxml import etree
 
 from app import create_server
+from config import W_NS
 
 
 def _save(doc: Document, path: Path) -> Path:
@@ -59,6 +63,60 @@ def build_with_sections(path: Path) -> Path:
     return _save(doc, path)
 
 
+def _rewrite_docx_xml(path: Path, part_name: str, mutator) -> Path:
+    with tempfile.NamedTemporaryFile(suffix=".docx", dir=str(path.parent), delete=False) as temp_file:
+        temp_path = Path(temp_file.name)
+    try:
+        with zipfile.ZipFile(path, "r") as source, zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as target:
+            for item in source.infolist():
+                data = source.read(item.filename)
+                if item.filename == part_name:
+                    root = etree.fromstring(data)
+                    mutator(root)
+                    data = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone="yes")
+                target.writestr(item, data)
+        shutil.move(str(temp_path), str(path))
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+    return path
+
+
+def build_fractional_sections(path: Path) -> Path:
+    build_with_sections(path)
+
+    def _mutate(root: etree._Element) -> None:
+        namespace = {"w": W_NS}
+        section_nodes = root.xpath("//w:sectPr", namespaces=namespace)
+        if not section_nodes:
+            raise RuntimeError("Expected at least one section in test fixture")
+        page_margins = section_nodes[-1].find("w:pgMar", namespaces=namespace)
+        if page_margins is None:
+            raise RuntimeError("Expected w:pgMar in section properties")
+        page_margins.set(f"{{{W_NS}}}left", "1984.251968503937")
+
+    return _rewrite_docx_xml(path, "word/document.xml", _mutate)
+
+
+def build_fractional_paragraph_formatting(path: Path) -> Path:
+    build_simple(path)
+
+    def _mutate(root: etree._Element) -> None:
+        namespace = {"w": W_NS}
+        paragraph = root.xpath("//w:body/w:p[2]", namespaces=namespace)
+        if not paragraph:
+            raise RuntimeError("Expected a second body paragraph in test fixture")
+        paragraph_properties = paragraph[0].find("w:pPr", namespaces=namespace)
+        if paragraph_properties is None:
+            paragraph_properties = etree.SubElement(paragraph[0], f"{{{W_NS}}}pPr")
+        indent = paragraph_properties.find("w:ind", namespaces=namespace)
+        if indent is None:
+            indent = etree.SubElement(paragraph_properties, f"{{{W_NS}}}ind")
+        indent.set(f"{{{W_NS}}}firstLine", "708.6614173228347")
+
+    return _rewrite_docx_xml(path, "word/document.xml", _mutate)
+
+
 def build_with_tables(path: Path) -> Path:
     doc = Document()
     doc.add_paragraph("Table anchor paragraph.")
@@ -73,6 +131,19 @@ def build_with_tables(path: Path) -> Path:
     second.cell(0, 1).text = "Status"
     second.cell(1, 0).text = "West"
     second.cell(1, 1).text = "Ready"
+    return _save(doc, path)
+
+
+def build_table_before_target(path: Path) -> Path:
+    doc = Document()
+    table = doc.add_table(rows=2, cols=2)
+    table.style = "Table Grid"
+    table.cell(0, 0).text = "Cell A"
+    table.cell(0, 1).text = "Cell B"
+    table.cell(1, 0).text = "Cell C"
+    table.cell(1, 1).text = "Cell D"
+    doc.add_paragraph("Canonical anchor paragraph.")
+    doc.add_paragraph("UNIQUE_TARGET_AFTER_TABLE")
     return _save(doc, path)
 
 
@@ -148,7 +219,10 @@ def generate_all_fixtures(target_dir: Path) -> None:
         "simple.docx": build_simple,
         "with_styles.docx": build_with_styles,
         "with_sections.docx": build_with_sections,
+        "fractional_sections.docx": build_fractional_sections,
+        "fractional_paragraph_formatting.docx": build_fractional_paragraph_formatting,
         "with_tables.docx": build_with_tables,
+        "table_before_target.docx": build_table_before_target,
         "with_review.docx": build_review,
         "complex.docx": build_complex,
     }
