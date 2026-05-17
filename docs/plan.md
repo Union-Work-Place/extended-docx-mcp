@@ -1,333 +1,323 @@
-# План доработки по результатам тестирования MCP
+# Refinement Plan Based on MCP Testing Results
 
-## Контекст
+## Context
 
-Проверка на реальном документе показала, что базовые сценарии чтения и редактирования в целом работают, но есть два дефекта, которые нужно закрыть в первую очередь:
+Testing with a real-world document demonstrated that basic reading and editing scenarios generally function correctly; however, two defects require immediate resolution:
 
-1. Высокий приоритет: падение на секциях с нецелыми значениями `w:pgMar`.
-2. Средний приоритет: расхождение индексов абзацев между reading tools и comment/revision tools.
+1. High Priority: Crashes occurring in sections containing non-integer `w:pgMar` values.
+2. Medium Priority: Discrepancies in paragraph indexing between the reading tools and the comment/revision tools.
 
-Ниже зафиксирован план доработки, ориентированный на минимальные изменения в текущей архитектуре, но с обязательным регрессионным покрытием.
+Outlined below is a refinement plan designed to introduce minimal changes to the current architecture while ensuring comprehensive regression test coverage.
 
-## Цели доработки
+## Refinement Goals
 
-- Убрать падения на документах, которые открываются в Word, но содержат нестандартные дробные значения полей секции.
-- Обеспечить деградацию без исключения для `read_docx`, `list_sections` и `insert_table`.
-- Привести индексацию абзацев к одному правилу во всех инструментах, где пользователь передаёт или получает `paragraph_index`.
-- Добавить тесты, которые воспроизводят оба дефекта и защищают от повторной поломки.
+- Eliminate crashes in documents that open successfully in Word but contain non-standard fractional values ​​for section margins.
+- Ensure graceful degradation (without raising exceptions) for the `read_docx`, `list_sections`, and `insert_table` functions.
+- Standardize paragraph indexing rules across all tools where the user supplies or retrieves a `paragraph_index`.
+- Add tests that reproduce both defects and serve as safeguards against future regressions.
 
-## Проблема 1. Секции падают на дробных margin values
+## Problem 1: Sections Crash on Fractional Margin Values
 
-### Симптомы
+### Symptoms
 
-- `list_sections` падает при сериализации секции.
-- `read_docx` падает только при `include_sections=true`.
-- `insert_table` падает внутри `python-docx` при `Document.add_table()`.
+- `list_sections` crashes during section serialization.
+- `read_docx` crashes only when `include_sections=true`.
+- `insert_table` crashes internally within `python-docx` during the `Document.add_table()` call.
 
-### Подтверждённая причина
+### Confirmed Cause
 
-- В документе встречается дробное значение `w:pgMar/@w:left`, например `1984.251968503937`.
-- `python-docx` ожидает integer twips и делает `int(...)`, из-за чего выбрасывает `ValueError`.
-- В текущем коде прямой доступ к `section.left_margin.pt` и косвенный доступ через `document.add_table()` не защищены.
-
-### Затронутые места
+- The document contains a fractional value for `w:pgMar/@w:left`—for example, `1984.251968503937`.
+- `python-docx` expects integer twips and attempts to cast the value using `int(...)`, which results in a `ValueError`.
+- In the current codebase, both direct access to `section.left_margin.pt` and indirect access via `document.add_table()` lack proper error handling. ### Affected Locations
 
 - `src/ops/structure_ops.py:503` (`section_to_dict`)
 - `src/toolsets/sections.py:23` (`list_sections`)
 - `src/toolsets/content_tools/discovery.py:115` (`read_docx`)
-- `src/ops/structure_ops.py:382` (`insert_table_after` через `document.add_table()`)
+- `src/ops/structure_ops.py:382` (`insert_table_after` via `document.add_table()`)
 
-## План исправления проблемы 1
+## Plan to Fix Problem 1
 
-### 1. Добавить безопасное чтение секционных размеров из OOXML
+### 1. Add Safe Reading of Section Dimensions from OOXML
 
-Нужно ввести один низкоуровневый helper для секций, который не полагается на прямой вызов `python-docx`-свойств margin/page setup там, где документ может содержать битые numeric values.
+A single low-level helper for sections needs to be introduced—one that does not rely on directly calling `python-docx`'s margin/page setup properties in cases where the document might contain corrupt numeric values.
 
-Что сделать:
+What to do:
 
-- Добавить helper в слой `ops`, который читает raw XML секции и безопасно парсит числовые атрибуты `pgSz` и `pgMar`.
-- Для полей секции использовать стратегию:
-  - сначала пробовать безопасное чтение через `python-docx`;
-  - при `ValueError` или `TypeError` читать значение напрямую из XML;
-  - если значение дробное, конвертировать его в points через `float(value)` и пересчёт из twips;
-  - если значение вообще не парсится, возвращать `None`, а не падать.
-- Явно отделить два случая:
-  - корректное значение, полученное из `python-docx`;
-  - fallback-значение, полученное из XML.
+- Add a helper to the `ops` layer that reads the raw XML of a section and safely parses the numeric attributes within `pgSz` and `pgMar`.
+- For section margins, employ the following strategy:
+- First, attempt a safe read using `python-docx`. 
+- If a `ValueError` or `TypeError` occurs, read the value directly from the XML. 
+- If the value is fractional, convert it to points using `float(value)` and a conversion from twips. 
+- If the value cannot be parsed at all, return `None` rather than crashing.
+- Explicitly distinguish between two cases:
+- A valid value obtained from `python-docx`. 
+- A fallback value obtained directly from the XML.
 
-Ожидаемый результат:
+Expected Result:
 
-- `section_to_dict()` всегда возвращает сериализуемую структуру даже на «грязном» DOCX.
-- `list_sections` и `read_docx(include_sections=true)` перестают падать.
+- `section_to_dict()` always returns a serializable structure, even when processing a "dirty" DOCX file.
+- `list_sections` and `read_docx(include_sections=true)` no longer crash.
 
-### 2. Переписать `section_to_dict()` на безопасную сериализацию
+### 2. Rewrite `section_to_dict()` for Safe Serialization
 
-Что сделать:
+**What to do:**
 
-- Заменить прямые обращения вида `section.left_margin.pt` на безопасный helper.
-- Аналогично проверить `page_width`, `page_height`, `right_margin`, `top_margin`, `bottom_margin`, чтобы сериализация была единообразной, а не лечила только `left_margin`.
-- Сохранить текущую форму ответа, чтобы не ломать клиентов.
-- При невозможности прочитать конкретное поле отдавать `None`, а не аварийно завершать весь tool.
+- Replace direct attribute access—such as `section.left_margin.pt`—with a safe helper function.
+- Similarly, validate `page_width`, `page_height`, `right_margin`, `top_margin`, and `bottom_margin` to ensure serialization is consistent across all fields, rather than fixing only `left_margin`.
+- Preserve the current response format to avoid breaking existing clients.
+- If a specific field cannot be read, return `None` instead of causing the entire tool to crash.
 
-Дополнительно:
+**Optional:**
 
-- При необходимости добавить в ответ секции служебное поле вроде `warnings` или `source="xml-fallback"`, но только если это не усложнит контракт. Если без этого можно обойтись, лучше оставить формат минимальным.
+- If necessary, add a metadata field—such as `warnings` or `source="xml-fallback"`—to the section response, but only if doing so does not complicate the API contract. If it is possible to proceed without this, it is better to keep the format minimal.
 
-### 3. Развязать `insert_table` с проблемным чтением `_block_width`
+### 3. Decouple `insert_table` from the Problematic `_block_width` Read
 
-Падение `insert_table` сейчас вызвано не логикой таблиц, а внутренним чтением секции внутри `python-docx`.
+The current failure of `insert_table` is not caused by the table logic itself, but rather by an internal section-reading operation within the `python-docx` library.
 
-Нужно выбрать один из двух подходов и зафиксировать его при реализации:
+You must choose one of the following two approaches and adhere to it during implementation:
 
-1. Предпочтительный подход: нормализовать некорректные margin values в XML до вызова `document.add_table()`.
-2. Альтернативный подход: вставлять таблицу через OOXML без использования `Document.add_table()`.
+1. **Preferred Approach:** Normalize any invalid margin values ​​within the XML *before* calling `document.add_table()`.
+2. **Alternative Approach:** Insert the table directly via OOXML, bypassing the `Document.add_table()` method entirely.
 
-Предпочтительный путь минимальнее и лучше соответствует текущей архитектуре.
+The preferred path is more lightweight and aligns better with the current architecture.
 
-Что сделать в предпочтительном варианте:
+**What to do for the preferred option:**
 
-- Перед вызовом `document.add_table()` определить, есть ли у последней секции некорректные margin attributes.
-- Если есть, аккуратно нормализовать только проблемные значения в XML секции:
-  - прочитать raw attribute;
-  - если это float-подобная строка, привести к integer twips по понятному правилу округления;
-  - не менять остальные секционные параметры.
-- После нормализации продолжать обычный путь `python-docx`.
+- Before calling `document.add_table()`, check whether the document's last section contains any invalid margin attributes.
+- If invalid attributes are found, carefully normalize *only* the problematic values ​​within the section's XML:
+- Read the raw attribute value. 
+- If the value is a float-like string, convert it to an integer (in twips) using a clearly defined rounding rule. 
+- Do *not* modify any other section parameters.
+- Once normalized, proceed with the standard `python-docx` execution path. Why this is better:
 
-Почему это лучше:
+- Minimal deviation from the current code;
+- No need to manually construct XML tables;
+- Lower risk of regressions regarding styles, widths, and the internal `python-docx` model.
 
-- минимальное отклонение от текущего кода;
-- не нужно вручную собирать XML таблицы;
-- меньше риск регрессий по стилям, ширинам и внутренней модели `python-docx`.
+### 4. Define a Normalization Rule for Fractional Twips
 
-### 4. Определить правило нормализации дробных twips
+A rule must be established in advance to ensure that both the code and the tests verify the exact same behavior.
 
-Нужно заранее зафиксировать правило, чтобы код и тесты проверяли одно и то же поведение.
+The recommended rule is as follows:
 
-Рекомендуемое правило:
+- If a value can be interpreted as a `float`, round it to the nearest integer twip value using `round()`.
+- Subsequently, use this integer twip value for all further operations.
+- If a value is negative in a context where negative margins are disallowed, do not silently correct it unless absolutely necessary; instead, either leave it as is during serialization (represented as `None`) or validate it separately, specifically within the "mutating path" (i.e., when modifying the document).
 
-- если значение можно прочитать как `float`, приводить к ближайшему целому twips через `round()`;
-- затем использовать уже целое twips значение для дальнейшей работы;
-- если значение отрицательное там, где отрицательные margin недопустимы, не корректировать молча без необходимости: либо оставить как есть в сериализации через `None`, либо отдельно валидировать только в mutating-path.
+This rule is sufficiently simple and predictable to serve as a reliable basis for regression testing.
 
-Это правило достаточно простое и предсказуемое для регрессионных тестов.
+### 5. Limit the Scope of the Fix
 
-### 5. Ограничить область исправления
+It is crucial to avoid scope creep in this task.
 
-Важно не раздувать задачу.
+This enhancement *should not* involve:
 
-Не нужно в этой доработке:
+- Attempting to "fix the entire DOCX file" wholesale upon opening.
+- Automatically resaving the document solely for the purpose of reading it.
+- Massively rewriting the section/page setup API.
 
-- пытаться «чинить весь DOCX целиком» при открытии;
-- автоматически пересохранять документ только ради чтения;
-- массово переписывать section/page setup API.
+The scope should be limited to the following:
 
-Нужно только:
+- Safely reading the document.
+- Performing localized normalization immediately prior to specific points where `python-docx` would otherwise raise an error.
+- Ensuring adequate test coverage for these changes.
 
-- безопасно читать;
-- локально нормализовать перед точками, где иначе падает `python-docx`;
-- покрыть это тестами.
+## Problem 2: Inconsistent Paragraph Indexing Rules
 
-## Проблема 2. Разные правила индексации абзацев
+### Symptoms
 
-### Симптомы
+- `find_text_occurrences("INTRODUCTION")` returns a specific `paragraph_index`.
+- `add_comment_to_matching_text("INTRODUCTION")` places the comment in a *different* paragraph.
 
-- `find_text_occurrences("ВВЕДЕНИЕ")` возвращает один `paragraph_index`.
-- `add_comment_to_matching_text("ВВЕДЕНИЕ")` ставит комментарий в другой абзац.
+### Confirmed Cause
 
-### Подтверждённая причина
-
-- reading tools используют `iter_paragraphs(doc)` и получают последовательность абзацев из модели `python-docx`, включая абзацы внутри таблиц.
-- review/comment tools используют `iter_document_paragraphs_xml(root)` с `body.iter(w:p)` и получают другую последовательность.
-- На документах с таблицами в начале файла это ломает перенос индексов между tool-ами.
-
-### Затронутые места
+- The reading tools utilize `iter_paragraphs(doc)`, which retrieves a sequence of paragraphs directly from the `python-docx` object model—including paragraphs located *inside* tables.
+- The review/comment tools utilize `iter_document_paragraphs_xml(root)` (specifically `body.iter(w:p)`), which yields a *different* sequence of paragraphs.
+- In documents containing tables at the very beginning of the file, this discrepancy breaks the consistent transfer of paragraph indices between these different toolsets. ### Affected Locations
 
 - `src/ops/review/xml_utils.py:156`
 - `src/ops/review/comments.py:226`
 - `src/toolsets/content_tools/discovery.py:64`
 
-## План исправления проблемы 2
+## Plan to Fix Issue 2
 
-### 1. Зафиксировать единую модель индексации
+### 1. Establish a Unified Indexing Model
 
-Нужно принять одно правило и использовать его во всех user-facing инструментах.
+We need to adopt a single rule and apply it across all user-facing tools.
 
-Рекомендуемое правило:
+Recommended Rule:
 
-- canonical paragraph index должен совпадать с тем, что возвращают reading tools через `iter_paragraphs(doc)`;
-- comment tools и revision tools должны подстраиваться под эту модель, а не наоборот.
+- The canonical paragraph index must match the index returned by the reading tools via `iter_paragraphs(doc)`;
+- The comment tools and revision tools must adapt to this model, rather than the other way around.
 
-Почему:
+Rationale:
 
-- именно reading/discovery tools первыми отдают пользователю `paragraph_index`;
-- пользовательский workflow обычно начинается с `find_*`, `extract_text`, `get_paragraph_range`, `read_docx`;
-- менять уже видимую модель индексации у reading tools рискованнее.
+- The reading/discovery tools are the ones that first expose the `paragraph_index` to the user;
+- The user workflow typically begins with operations such as `find_*`, `extract_text`, `get_paragraph_range`, and `read_docx`;
+- Changing the indexing model within the reading tools—which is already visible to users—carries a higher risk.
 
-### 2. Добавить слой сопоставления между python-docx paragraphs и XML paragraphs
+### 2. Add a Mapping Layer Between `python-docx` Paragraphs and XML Paragraphs
 
-Нужен helper, который строит сопоставление между:
+We need a helper utility that establishes a mapping between:
 
-- индексом абзаца в `iter_paragraphs(doc)`;
-- соответствующим XML-элементом `w:p`;
-- при необходимости индексом в XML-последовательности.
+- The paragraph index as yielded by `iter_paragraphs(doc)`;
+- The corresponding `w:p` XML element;
+- (If necessary) the index within the XML sequence.
 
-Что сделать:
+What to do:
 
-- вынести единый helper в `ops`, который возвращает paragraph descriptors в canonical document order;
-- использовать его как в discovery/read path, так и в review/comment path;
-- исключить ситуацию, когда один tool работает по `python-docx` order, а другой по `body.iter(w:p)` order без маппинга.
+- Create a unified helper within `ops` that returns paragraph descriptors in canonical document order;
+- Use this helper in both the discovery/read path and the review/comment path;
+- Eliminate situations where one tool operates according to the `python-docx` order while another operates according to the `body.iter(w:p)` order without proper mapping.
 
-Практически это можно реализовать минимально:
+In practical terms, this can be implemented with minimal effort:
 
-- либо через построение списка XML-элементов в том же порядке, что и `iter_paragraphs(doc)`;
-- либо через сопоставление по underlying XML node у объектов `Paragraph`.
+- Either by constructing a list of XML elements in the same order as `iter_paragraphs(doc)`;
+- Or by mapping based on the underlying XML node of the `Paragraph` objects.
 
-Второй вариант предпочтительнее, если его можно сделать без хрупкой логики.
+The second option is preferable, provided it can be implemented without relying on fragile logic.
 
-### 3. Перевести comment tools на canonical indices
+### 3. Migrate comment tools to canonical indices
 
-Что нужно поменять:
+What needs to change:
 
-- `find_text_range_xml()` должен принимать и интерпретировать `paragraph_index` в той же системе координат, что и `find_text_occurrences()`;
-- `add_comment`, `add_comment_to_matching_text`, `add_comment_to_text_range` должны выбирать XML paragraph через canonical mapping;
-- если используется `anchor_text`, поиск тоже должен идти по той же canonical последовательности абзацев.
+- `find_text_range_xml()` must accept and interpret `paragraph_index` using the same coordinate system as `find_text_occurrences()`;
+- `add_comment`, `add_comment_to_matching_text`, and `add_comment_to_text_range` must select the target XML paragraph via the canonical mapping;
+- If `anchor_text` is used, the search must also be performed against the same canonical sequence of paragraphs.
 
-Ожидаемый результат:
+Expected result:
 
-- индекс, полученный из `find_text_occurrences`, можно напрямую передать в comment tools;
-- пользователь получает комментарий в ожидаемом месте даже в документах с таблицами.
+- An index obtained from `find_text_occurrences` can be passed directly to the comment tools;
+- Users will see comments placed in the expected location, even in documents containing tables.
 
-### 4. Проверить revision tools на ту же проблему
+### 4. Check revision tools for the same issue
 
-Даже если баг явно зафиксирован на comments, нужно сразу проверить revision-инструменты, потому что они используют тот же XML-слой.
+Even though the bug has been explicitly identified in the comment tools, the revision tools should be checked immediately as well, since they operate on the same XML layer.
 
-Что сделать:
+What to do:
 
-- просмотреть все review tools, где фигурирует `paragraph_index` или paragraph context;
-- убедиться, что `get_revision_details` и смежные helpers не опираются на отдельную, несовместимую индексацию;
-- если опираются, перевести их на тот же canonical helper в рамках этой же задачи.
+- Review all review tools that involve `paragraph_index` or paragraph context;
+- Verify that `get_revision_details` and related helpers do not rely on a separate, incompatible indexing scheme;
+- If they do, migrate them to use the same canonical helper as part of this task. ## Test Plan
 
-## Тестовый план
+### 1. Regression Test for Fractional `w:left` Values
 
-### 1. Regression test на дробный `w:left`
+A DOCX fixture needs to be added where a section's `w:pgMar/@w:left` attribute contains a fractional value.
 
-Нужно добавить fixture DOCX, где у секции `w:pgMar/@w:left` содержит дробное значение.
+Options for preparing the fixture:
 
-Варианты подготовки fixture:
+- **Preferred:** Assemble the DOCX from an existing fixture and make targeted XML modifications using the test builder.
+- **Acceptable:** Add a pre-built fixture file, provided it is small and stable.
 
-- предпочтительно: собрать DOCX из существующего fixture и точечно изменить XML в тестовом builder;
-- допустимо: добавить готовый fixture-файл, если он небольшой и стабилен.
+What the tests should verify:
 
-Что проверить тестами:
+- `list_sections` returns `status == "ok"` and serializes the section without crashing.
+- `read_docx(include_sections=true)` returns `status == "ok"`.
+- `insert_table` successfully inserts a table into a copy of such a document.
+- Furthermore, the resulting document can be successfully re-read using the `list_tables` or `read_docx` tools.
 
-- `list_sections` возвращает `status == "ok"` и сериализует секцию без падения;
-- `read_docx(include_sections=true)` возвращает `status == "ok"`;
-- `insert_table` успешно вставляет таблицу в копию такого документа;
-- при этом результат можно повторно прочитать инструментами `list_tables` или `read_docx`.
+It is best to split this into two separate tests:
 
-Лучше разбить на два теста:
+- One covering the read/list path.
+- One covering the mutating path (`insert_table`).
 
-- один на read/list path;
-- один на mutating path `insert_table`.
+### 2. Integration Test for Paragraph Index Consistency
 
-### 2. Integration test на согласованность paragraph indices
+A document containing a table positioned *before* the target paragraph is required to reproduce the current defect.
 
-Нужен документ с таблицей до целевого абзаца, чтобы воспроизвести текущий дефект.
+What to verify:
 
-Что проверить:
+- `find_text_occurrences` returns a match with a specific `paragraph_index`.
+- This index is passed to either `add_comment_to_matching_text` or `add_comment_to_text_range`.
+- The comment is, in fact, placed within the correct "canonical" paragraph.
 
-- `find_text_occurrences` возвращает match с конкретным `paragraph_index`;
-- этот индекс передаётся в `add_comment_to_matching_text` или `add_comment_to_text_range`;
-- комментарий фактически ставится в тот же canonical paragraph.
+Minimum test scenario:
 
-Минимальный проверяемый сценарий:
+1. A fixture containing a table at the beginning of the document.
+2. Unique text located in a standard paragraph following the table.
+3. `find_text_occurrences` successfully locates this text.
+4. `add_comment_to_matching_text`—using the same target text and/or `paragraph_index`—successfully places a comment.
+5. Verification (via `list_comments` and, if necessary, by inspecting the XML anchor) confirms that the comment is correctly bound to the intended paragraph.
 
-1. fixture с таблицей в начале документа;
-2. уникальный текст в обычном абзаце после таблицы;
-3. `find_text_occurrences` находит его;
-4. `add_comment_to_matching_text` с тем же target text и/или `paragraph_index` ставит комментарий;
-5. проверка через `list_comments` и, при необходимости, через чтение XML-якоря, что комментарий привязан к правильному абзацу.
+### 3. Smoke Testing Existing Scenarios
 
-### 3. Smoke-проверка уже существующих сценариев
-
-После исправления нужно перепроверить существующие тесты как минимум для модулей:
+After applying the fixes, the existing tests must be re-verified for at least the following modules:
 
 - `tests/test_sections.py`
 - `tests/test_review.py`
 - `tests/test_tables.py`
 - `tests/test_content_reading.py`
 
-И затем прогнать весь `pytest`, чтобы убедиться, что унификация paragraph mapping не внесла скрытые регрессии.
+Then, run the full `pytest` suite to ensure that the unification of paragraph mapping has not introduced any hidden regressions.
 
-## Порядок реализации
+## Implementation Plan
 
-### Этап 1. Починка секций
+### Phase 1: Fixing Sections
 
-- Добавить safe parsing и fallback-чтение page setup values.
-- Перевести `section_to_dict()` на безопасную сериализацию.
-- Починить `insert_table` через локальную нормализацию проблемных margin values перед `document.add_table()`.
-- Добавить regression tests на дробные margin values.
+- Add safe parsing and fallback reading for page setup values.
+- Migrate `section_to_dict()` to use safe serialization.
+- Fix `insert_table` by performing local normalization of problematic margin values ​​prior to calling `document.add_table()`.
+- Add regression tests for fractional margin values.
 
-Критерий готовности:
+Completion Criteria:
 
-- на проблемном документе больше не падают `list_sections`, `read_docx(include_sections=true)`, `insert_table`.
+- `list_sections`, `read_docx(include_sections=true)`, and `insert_table` no longer fail when run against the problematic document.
 
-### Этап 2. Унификация paragraph indices
+### Phase 2: Unifying Paragraph Indices
 
-- Ввести canonical paragraph mapping helper.
-- Перевести comment tools на canonical paragraph order.
-- Проверить и при необходимости перевести revision tools на тот же helper.
-- Добавить integration test на документ с таблицами.
+- Introduce a canonical paragraph mapping helper.
+- Migrate the comment tools to use the canonical paragraph order.
+- Review the revision tools and, if necessary, migrate them to use the same helper.
+- Add an integration test for a document containing tables.
 
-Критерий готовности:
+Completion Criteria:
 
-- индекс из `find_text_occurrences` можно без сюрпризов использовать в comment workflow.
+- Indices returned by `find_text_occurrences` can be used within the comment workflow without unexpected issues.
 
-### Этап 3. Финальная валидация
+### Phase 3: Final Validation
 
-- Прогнать весь `pytest`.
-- Повторить ручную проверку на копии реального документа:
-  - `read_docx(include_sections=true)`
-  - `list_sections`
-  - `insert_table`
-  - `find_text_occurrences`
-  - `add_comment_to_matching_text`
-- Зафиксировать результат в документации ограничений, если останутся edge cases.
+- Run the full `pytest` suite.
+- Repeat the manual verification process using a copy of a real-world document, checking the following functions:
+- `read_docx(include_sections=true)`
+- `list_sections`
+- `insert_table`
+- `find_text_occurrences`
+- `add_comment_to_matching_text`
+- Document any remaining edge cases in the limitations section of the documentation. ## Risks and Solutions
 
-## Риски и решения
+### Risk 1. `python-docx` may fail on more than just `left_margin`
 
-### Риск 1. `python-docx` может падать не только на `left_margin`
+Solution:
 
-Решение:
+- Create a helper function that handles not just a single field, but all numeric section properties that are serialized or read within performance-critical code paths.
 
-- делать helper не под одно поле, а под все числовые section properties, которые сериализуются или читаются в горячих путях.
+### Risk 2. XML normalization prior to table insertion may inadvertently alter the document
 
-### Риск 2. Нормализация XML перед вставкой таблицы может непреднамеренно менять документ
+Solution:
 
-Решение:
+- Modify only the specific problematic numeric attributes;
+- Avoid preemptively altering the document during simple read operations;
+- Cover the "mutating path" with a dedicated test case.
 
-- менять только конкретные проблемные numeric attributes;
-- не трогать документ заранее при простом чтении;
-- покрыть mutating path отдельным тестом.
+### Risk 3. Unifying paragraph indices may impact existing review tests
 
-### Риск 3. Унификация paragraph indices может затронуть существующие review tests
+Solution:
 
-Решение:
+- Migrate all user-facing review tools to use a single helper function in a single pass;
+- Avoid leaving a mixed indexing model in place across different tools.
 
-- перевести все user-facing review tools на один helper за один проход;
-- не оставлять смешанную модель индексации между разными tool-ами.
+## Completion Criteria
 
-## Критерии завершения
+- A test case reproducing a fractional `w:left` value has been added and passes successfully.
+- A test case reproducing paragraph index discrepancies caused by tables has been added and passes successfully.
+- `list_sections`, `read_docx(include_sections=true)`, and `insert_table` do not fail when run against the problematic document.
+- `find_text_occurrences` and `add_comment_to_matching_text` utilize a compatible indexing scheme.
+- A full `pytest` run completes successfully without introducing any new regressions.
 
-- Добавлен тест, воспроизводящий дробный `w:left`, и он проходит.
-- Добавлен тест, воспроизводящий расхождение paragraph indices из-за таблиц, и он проходит.
-- `list_sections`, `read_docx(include_sections=true)` и `insert_table` не падают на проблемном документе.
-- `find_text_occurrences` и `add_comment_to_matching_text` используют совместимую индексацию.
-- Полный `pytest` проходит без новых регрессий.
+## Items to Defer Beyond the Scope of This Task
 
-## Что можно отложить за рамки этой задачи
-
-- расширенную диагностику всех нестандартных секционных атрибутов в ответах API;
-- автоматическое восстановление любых битых значений OOXML при открытии файла;
-- отдельное публичное API для «ремонта» проблемных DOCX;
-- более широкую унификацию индексации для всех внутренних helper-ов, которые не торчат наружу в MCP-контракт.
+- Extended diagnostics for all non-standard section attributes within API responses;
+- Automatic repair of any malformed OOXML values ​​upon file opening;
+- A separate public API specifically for "repairing" problematic DOCX files;
+- Broader unification of indexing schemes across all internal helper functions that are not exposed externally via the MCP contract.
