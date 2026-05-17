@@ -25,6 +25,17 @@ from ops.package_io import clean_text
 from ops.text_ops import enum_name, normalize_mapping_value
 
 
+TWIPS_PER_POINT = 20.0
+SECTION_NUMERIC_FIELDS = {
+    "page_width_points": ("page_width", "pgSz", "w"),
+    "page_height_points": ("page_height", "pgSz", "h"),
+    "left_margin_points": ("left_margin", "pgMar", "left"),
+    "right_margin_points": ("right_margin", "pgMar", "right"),
+    "top_margin_points": ("top_margin", "pgMar", "top"),
+    "bottom_margin_points": ("bottom_margin", "pgMar", "bottom"),
+}
+
+
 def parent_element(parent: Any) -> Any:
     """Return the OOXML container element for a document-like object.
 
@@ -163,11 +174,11 @@ def paragraph_to_dict(paragraph: Paragraph, index: int, include_runs: bool) -> d
         "style_name": paragraph.style.name if paragraph.style else None,
         "alignment": enum_name(paragraph_format.alignment, PX_ALIGNMENTS),
         "keep_with_next": paragraph_format.keep_with_next,
-        "left_indent_points": paragraph_format.left_indent.pt if paragraph_format.left_indent else None,
-        "right_indent_points": paragraph_format.right_indent.pt if paragraph_format.right_indent else None,
-        "first_line_indent_points": paragraph_format.first_line_indent.pt if paragraph_format.first_line_indent else None,
-        "space_before_points": paragraph_format.space_before.pt if paragraph_format.space_before else None,
-        "space_after_points": paragraph_format.space_after.pt if paragraph_format.space_after else None,
+        "left_indent_points": safe_length_points(paragraph_format, "left_indent"),
+        "right_indent_points": safe_length_points(paragraph_format, "right_indent"),
+        "first_line_indent_points": safe_length_points(paragraph_format, "first_line_indent"),
+        "space_before_points": safe_length_points(paragraph_format, "space_before"),
+        "space_after_points": safe_length_points(paragraph_format, "space_after"),
     }
     if include_runs:
         result["runs"] = [
@@ -175,7 +186,7 @@ def paragraph_to_dict(paragraph: Paragraph, index: int, include_runs: bool) -> d
                 "index": run_index,
                 "text": run.text,
                 "font_name": run.font.name,
-                "font_size_points": run.font.size.pt if run.font.size else None,
+                "font_size_points": safe_length_points(run.font, "size"),
                 "bold": run.bold,
                 "italic": run.italic,
                 "underline": enum_name(run.underline, PX_UNDERLINES),
@@ -352,6 +363,7 @@ def write_table_block(doc: Any, block: dict[str, Any]) -> Table:
     if not all(isinstance(row, list) and row for row in rows):
         raise ValueError("Each table row must be a non-empty list")
     column_count = max(len(row) for row in rows)
+    normalize_document_section_twips(doc)
     table = doc.add_table(rows=len(rows), cols=column_count)
     for row_index, row in enumerate(rows):
         for column_index in range(column_count):
@@ -379,6 +391,7 @@ def insert_table_after(paragraph: Paragraph, data: list[list[str]]) -> Table:
         raise ValueError("Table data must contain at least one row and one cell")
     document = paragraph.part.document
     column_count = max(len(row) for row in data)
+    normalize_document_section_twips(document)
     table = document.add_table(rows=len(data), cols=column_count)
     for row_index, row_values in enumerate(data):
         for cell_index in range(column_count):
@@ -500,6 +513,91 @@ def write_structured_block(doc: Any, block: dict[str, Any], index: int) -> None:
     doc.add_section(normalize_mapping_value(break_name, PX_SECTION_STARTS, "section break"))
 
 
+def section_xml_value(section: Any, child_tag: str, attr_name: str) -> str | None:
+    """Read a raw page-setup attribute directly from a section XML node."""
+
+    node = section._sectPr.find(qn(f"w:{child_tag}"))
+    if node is None:
+        return None
+    return node.get(qn(f"w:{attr_name}"))
+
+
+def parse_twips_to_points(raw_value: str | None) -> float | None:
+    """Convert a raw OOXML twips string into points."""
+
+    if raw_value is None:
+        return None
+    try:
+        return int(raw_value) / TWIPS_PER_POINT
+    except (TypeError, ValueError):
+        try:
+            return float(raw_value) / TWIPS_PER_POINT
+        except (TypeError, ValueError):
+            return None
+
+
+def safe_section_points(section: Any, property_name: str, child_tag: str, attr_name: str) -> float | None:
+    """Return a section length in points without propagating malformed twips errors."""
+
+    try:
+        value = getattr(section, property_name)
+        return None if value is None else value.pt
+    except (AttributeError, TypeError, ValueError):
+        return parse_twips_to_points(section_xml_value(section, child_tag, attr_name))
+
+
+def safe_length_points(owner: Any, property_name: str) -> float | None:
+    """Return a length-like property in points without propagating malformed values."""
+
+    try:
+        value = getattr(owner, property_name)
+        return None if value is None else value.pt
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def normalize_twips_value(raw_value: str | None) -> int | None:
+    """Normalize a float-like twips string to the nearest integer twip."""
+
+    if raw_value is None:
+        return None
+    try:
+        int(raw_value)
+    except (TypeError, ValueError):
+        try:
+            return round(float(raw_value))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def normalize_section_twips(section: Any) -> bool:
+    """Normalize float-like section twips values in-place before python-docx reads them."""
+
+    changed = False
+    for child_tag, attr_names in (("pgMar", ("left", "right", "top", "bottom", "header", "footer", "gutter")), ("pgSz", ("w", "h"))):
+        node = section._sectPr.find(qn(f"w:{child_tag}"))
+        if node is None:
+            continue
+        for attr_name in attr_names:
+            attr_qname = qn(f"w:{attr_name}")
+            normalized = normalize_twips_value(node.get(attr_qname))
+            if normalized is None:
+                continue
+            node.set(attr_qname, str(normalized))
+            changed = True
+    return changed
+
+
+def normalize_document_section_twips(doc: Any) -> bool:
+    """Normalize problematic twips values for the document's last section."""
+
+    sections = list(doc.sections)
+    if not sections:
+        return False
+    return normalize_section_twips(sections[-1])
+
+
 def section_to_dict(section: Any, index: int) -> dict[str, Any]:
     """Serialize a document section into an MCP-friendly dictionary.
 
@@ -511,18 +609,15 @@ def section_to_dict(section: Any, index: int) -> dict[str, Any]:
         Serialized section descriptor.
     """
 
-    return {
+    result = {
         "index": index,
         "orientation": enum_name(section.orientation, PX_ORIENTATIONS),
-        "page_width_points": section.page_width.pt,
-        "page_height_points": section.page_height.pt,
-        "left_margin_points": section.left_margin.pt,
-        "right_margin_points": section.right_margin.pt,
-        "top_margin_points": section.top_margin.pt,
-        "bottom_margin_points": section.bottom_margin.pt,
         "different_first_page_header_footer": section.different_first_page_header_footer,
         "section_start": enum_name(getattr(section, "start_type", None), PX_SECTION_STARTS),
     }
+    for field_name, (property_name, child_tag, attr_name) in SECTION_NUMERIC_FIELDS.items():
+        result[field_name] = safe_section_points(section, property_name, child_tag, attr_name)
+    return result
 
 
 def update_section_page_setup(
@@ -601,7 +696,7 @@ def style_to_dict(style: Any) -> dict[str, Any]:
         "type": enum_name(style.type, PX_STYLE_TYPES),
         "base_style_name": style.base_style.name if style.base_style else None,
         "font_name": style.font.name,
-        "font_size": style.font.size.pt if style.font.size else None,
+        "font_size": safe_length_points(style.font, "size"),
         "bold": style.font.bold,
         "italic": style.font.italic,
     }

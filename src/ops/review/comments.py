@@ -8,12 +8,12 @@ from typing import Any
 from lxml import etree
 
 from config import COMMENTS_CONTENT_TYPE, COMMENTS_REL_TYPE, CT, REL, W
-from ops.package_io import read_zip_xml
+from ops.package_io import load_document, read_zip_xml
 from ops.review.xml_utils import (
     REVISION_NAMESPACES,
     REVISION_XPATH,
+    canonical_paragraph_refs,
     clear_paragraph_content,
-    iter_document_paragraphs_xml,
     new_text_run,
     new_w_element,
     paragraph_text_xml,
@@ -224,6 +224,7 @@ def list_comments_xml(path: Any) -> list[dict[str, Any]]:
 
 
 def find_text_range_xml(
+    doc: Any,
     root: etree._Element,
     target_text: str,
     occurrence_index: int = 0,
@@ -233,6 +234,7 @@ def find_text_range_xml(
     """Find the first matching text range within ``word/document.xml``.
 
     Args:
+        doc: Loaded ``python-docx`` document for canonical paragraph ordering.
         root: Parsed ``word/document.xml`` root.
         target_text: Text to locate.
         occurrence_index: Zero-based occurrence to return.
@@ -245,18 +247,18 @@ def find_text_range_xml(
 
     if occurrence_index < 0:
         raise ValueError("occurrence_index must be >= 0")
-    paragraphs = iter_document_paragraphs_xml(root)
+    paragraphs = canonical_paragraph_refs(doc, root)
     candidates: list[tuple[int, etree._Element]]
     if paragraph_index is not None:
         if paragraph_index < 0 or paragraph_index >= len(paragraphs):
             raise IndexError(f"Paragraph index out of range: {paragraph_index}")
-        candidates = [(paragraph_index, paragraphs[paragraph_index])]
+        candidates = [(paragraph_index, paragraphs[paragraph_index].paragraph)]
     elif anchor_text:
-        candidates = [(index, paragraph) for index, paragraph in enumerate(paragraphs) if anchor_text in paragraph_text_xml(paragraph)]
+        candidates = [(ref.index, ref.paragraph) for ref in paragraphs if anchor_text in paragraph_text_xml(ref.paragraph)]
         if not candidates:
             raise ValueError(f"Anchor text was not found in document: {anchor_text}")
     else:
-        candidates = list(enumerate(paragraphs))
+        candidates = [(ref.index, ref.paragraph) for ref in paragraphs]
 
     seen = 0
     for actual_index, paragraph in candidates:
@@ -271,4 +273,3 @@ def find_text_range_xml(
             seen += 1
             start = offset + max(1, len(target_text))
     raise ValueError(f"Target text occurrence was not found: {target_text}")
-

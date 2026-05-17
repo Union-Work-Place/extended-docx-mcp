@@ -24,3 +24,18 @@ async def test_extract_and_find_tools_cover_text_queries(invoke_tool, fixtures_d
     assert matches["result"]["returned"] == 1
     assert paragraphs["status"] == "ok"
     assert paragraphs["result"]["returned"] == 1
+
+
+async def test_read_docx_handles_fractional_paragraph_formatting(invoke_tool, fixtures_dir):
+    result = await invoke_tool(
+        "read_docx",
+        path=str(fixtures_dir / "fractional_paragraph_formatting.docx"),
+        paragraph_count=3,
+        include_tables=False,
+        include_comments=False,
+        include_revisions=False,
+        include_sections=False,
+    )
+
+    assert result["status"] == "ok"
+    assert result["result"]["paragraphs"][1]["first_line_indent_points"] is None

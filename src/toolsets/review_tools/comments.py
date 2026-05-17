@@ -7,14 +7,14 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from config import W_NS
-from ops.package_io import read_zip_xml, resolve_path, save_zip_parts, serialize_xml
+from ops.package_io import load_document, read_zip_xml, resolve_path, save_zip_parts, serialize_xml
 from ops.review import (
     add_comment_node,
     anchor_comment_to_paragraph,
     anchor_comment_to_range,
+    canonical_paragraph_refs,
     ensure_comments_parts,
     find_text_range_xml,
-    iter_document_paragraphs_xml,
     list_comments_xml,
     next_comment_id,
     w_attr,
@@ -22,7 +22,7 @@ from ops.review import (
 from toolsets.response_schema import tool_response
 
 
-def _resolve_comment_anchor(root: Any, paragraph_index: int | None, anchor_text: str | None) -> tuple[int, Any]:
+def _resolve_comment_anchor(doc: Any, root: Any, paragraph_index: int | None, anchor_text: str | None) -> tuple[int, Any]:
     """Resolve a paragraph target for comment insertion.
 
     Args:
@@ -34,13 +34,13 @@ def _resolve_comment_anchor(root: Any, paragraph_index: int | None, anchor_text:
         Matching paragraph index and paragraph XML node.
     """
 
-    paragraphs = iter_document_paragraphs_xml(root)
+    paragraphs = canonical_paragraph_refs(doc, root)
     if paragraph_index is not None:
         if paragraph_index < 0 or paragraph_index >= len(paragraphs):
             raise IndexError(f"Paragraph index out of range: {paragraph_index}")
-        return paragraph_index, paragraphs[paragraph_index]
+        return paragraph_index, paragraphs[paragraph_index].paragraph
     if anchor_text:
-        matches = [(index, paragraph) for index, paragraph in enumerate(paragraphs) if anchor_text in "".join(paragraph.itertext())]
+        matches = [(ref.index, ref.paragraph) for ref in paragraphs if anchor_text in "".join(ref.paragraph.itertext())]
         if not matches:
             raise ValueError(f"Anchor text was not found in document: {anchor_text}")
         return matches[0]
@@ -81,10 +81,11 @@ def register_comment_tools(server: FastMCP) -> None:
         """
 
         source_path = resolve_path(path)
+        doc, _ = load_document(path)
         root = read_zip_xml(source_path, "word/document.xml")
         if root is None:
             raise ValueError("DOCX package is missing word/document.xml")
-        actual_index, paragraph = _resolve_comment_anchor(root, paragraph_index, anchor_text)
+        actual_index, paragraph = _resolve_comment_anchor(doc, root, paragraph_index, anchor_text)
         content_types, rels, comments_root = ensure_comments_parts(source_path)
         comment_id = next_comment_id(comments_root)
         add_comment_node(comments_root, comment_id, comment_text, author, initials)
@@ -139,10 +140,11 @@ def register_comment_tools(server: FastMCP) -> None:
         """
 
         source_path = resolve_path(path)
+        doc, _ = load_document(path)
         root = read_zip_xml(source_path, "word/document.xml")
         if root is None:
             raise ValueError("DOCX package is missing word/document.xml")
-        actual_index, paragraph = _resolve_comment_anchor(root, paragraph_index, anchor_text)
+        actual_index, paragraph = _resolve_comment_anchor(doc, root, paragraph_index, anchor_text)
         content_types, rels, comments_root = ensure_comments_parts(source_path)
         comment_id = next_comment_id(comments_root)
         add_comment_node(comments_root, comment_id, comment_text, author, initials)
@@ -199,10 +201,12 @@ def register_comment_tools(server: FastMCP) -> None:
         """
 
         source_path = resolve_path(path)
+        doc, _ = load_document(path)
         root = read_zip_xml(source_path, "word/document.xml")
         if root is None:
             raise ValueError("DOCX package is missing word/document.xml")
         paragraph, actual_index, start_offset, end_offset = find_text_range_xml(
+            doc,
             root,
             target_text,
             occurrence_index=occurrence_index,
