@@ -15,6 +15,7 @@ from ops.review import (
 )
 from ops.structure_ops import iter_paragraphs, iter_tables, paragraph_to_dict, section_to_dict, table_to_dict
 from ops.text_ops import matches_for_text
+from toolsets.response_schema import tool_response
 
 
 def register_content_discovery_tools(server: FastMCP) -> None:
@@ -25,6 +26,7 @@ def register_content_discovery_tools(server: FastMCP) -> None:
     """
 
     @server.tool()
+    @tool_response("read_docx")
     def read_docx(
         path: str,
         start_paragraph: int = 0,
@@ -115,6 +117,7 @@ def register_content_discovery_tools(server: FastMCP) -> None:
         return result
 
     @server.tool()
+    @tool_response("extract_text")
     def extract_text(path: str, start_paragraph: int = 0, count: int = 50) -> dict[str, Any]:
         """Extract a paragraph window with revision-aware text.
 
@@ -152,6 +155,7 @@ def register_content_discovery_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("find_text_occurrences")
     def find_text_occurrences(
         path: str,
         target_text: str,
@@ -199,6 +203,7 @@ def register_content_discovery_tools(server: FastMCP) -> None:
         return {"path": str(resolved), "engine": "python-docx", "returned": len(matches), "matches": matches}
 
     @server.tool()
+    @tool_response("find_paragraphs")
     def find_paragraphs(
         path: str,
         search_text: str | None = None,
@@ -237,4 +242,3 @@ def register_content_discovery_tools(server: FastMCP) -> None:
                 if len(matches) >= max_results:
                     break
         return {"path": str(resolved), "engine": "python-docx", "returned": len(matches), "paragraphs": matches}
-

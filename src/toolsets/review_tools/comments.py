@@ -6,6 +6,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from config import W_NS
 from ops.package_io import read_zip_xml, resolve_path, save_zip_parts, serialize_xml
 from ops.review import (
     add_comment_node,
@@ -18,6 +19,7 @@ from ops.review import (
     next_comment_id,
     w_attr,
 )
+from toolsets.response_schema import tool_response
 
 
 def _resolve_comment_anchor(root: Any, paragraph_index: int | None, anchor_text: str | None) -> tuple[int, Any]:
@@ -53,6 +55,7 @@ def register_comment_tools(server: FastMCP) -> None:
     """
 
     @server.tool()
+    @tool_response("add_comment")
     def add_comment(
         path: str,
         comment_text: str,
@@ -106,6 +109,7 @@ def register_comment_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("add_comment_to_text_range")
     def add_comment_to_text_range(
         path: str,
         comment_text: str,
@@ -165,6 +169,7 @@ def register_comment_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("add_comment_to_matching_text")
     def add_comment_to_matching_text(
         path: str,
         target_text: str,
@@ -231,6 +236,7 @@ def register_comment_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("add_comment_reply")
     def add_comment_reply(
         path: str,
         comment_index: int,
@@ -255,7 +261,7 @@ def register_comment_tools(server: FastMCP) -> None:
 
         source_path = resolve_path(path)
         content_types, rels, comments_root = ensure_comments_parts(source_path)
-        comments = comments_root.findall(f"{W}comment")
+        comments = comments_root.findall("{" + W_NS + "}comment")
         if comment_index < 0 or comment_index >= len(comments):
             raise IndexError(f"Comment index out of range: {comment_index}")
         parent_id = int(comments[comment_index].get(w_attr("id"), "0"))
@@ -281,6 +287,7 @@ def register_comment_tools(server: FastMCP) -> None:
         }
 
     @server.tool()
+    @tool_response("list_comments")
     def list_comments(path: str, include_replies: bool = True) -> dict[str, Any]:
         """Return comments and replies with metadata.
 
@@ -297,4 +304,3 @@ def register_comment_tools(server: FastMCP) -> None:
         if not include_replies:
             comments = [comment for comment in comments if comment.get("parent_id") is None]
         return {"path": str(resolved), "engine": "lxml-ooxml", "comments": comments}
-

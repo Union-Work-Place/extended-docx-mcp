@@ -14,6 +14,7 @@ from ops.review import (
     revision_details_xml,
     unwrap_revision,
 )
+from toolsets.response_schema import tool_response
 
 
 def register_revision_tools(server: FastMCP) -> None:
@@ -24,6 +25,7 @@ def register_revision_tools(server: FastMCP) -> None:
     """
 
     @server.tool()
+    @tool_response("list_revisions")
     def list_revisions(path: str) -> dict[str, Any]:
         """Return current tracked insertions and deletions.
 
@@ -38,6 +40,7 @@ def register_revision_tools(server: FastMCP) -> None:
         return {"path": str(resolved), "engine": "lxml-ooxml", "revisions": list_revisions_xml(resolved)}
 
     @server.tool()
+    @tool_response("get_revision_details")
     def get_revision_details(path: str, revision_index: int, context_paragraphs: int = 1) -> dict[str, Any]:
         """Return one revision together with paragraph-level context.
 
@@ -55,6 +58,7 @@ def register_revision_tools(server: FastMCP) -> None:
         return {"path": str(resolved), "engine": "lxml-ooxml", "revision": details}
 
     @server.tool()
+    @tool_response("accept_all_revisions")
     def accept_all_revisions(path: str, output_path: str | None = None) -> dict[str, Any]:
         """Accept all tracked changes.
 
@@ -83,6 +87,7 @@ def register_revision_tools(server: FastMCP) -> None:
         return {"path": str(source_path), "saved_to": str(saved_to), "engine": "lxml-ooxml", "accepted": before, "remaining": len(list_revisions_xml(saved_to))}
 
     @server.tool()
+    @tool_response("reject_all_revisions")
     def reject_all_revisions(path: str, output_path: str | None = None) -> dict[str, Any]:
         """Reject all tracked changes.
 
@@ -109,4 +114,3 @@ def register_revision_tools(server: FastMCP) -> None:
                 unwrap_revision(parent, revision, convert_deleted_text=True)
         saved_to = save_zip_parts(source_path, output_path, {"word/document.xml": serialize_xml(root)})
         return {"path": str(source_path), "saved_to": str(saved_to), "engine": "lxml-ooxml", "rejected": before, "remaining": len(list_revisions_xml(saved_to))}
-
