@@ -64,9 +64,8 @@ def build_with_sections(path: Path) -> Path:
 
 
 def _rewrite_docx_xml(path: Path, part_name: str, mutator) -> Path:
-    fd, temp_name = tempfile.mkstemp(suffix=".docx", dir=str(path.parent))
-    Path(temp_name).unlink(missing_ok=True)
-    temp_path = Path(temp_name)
+    with tempfile.NamedTemporaryFile(suffix=".docx", dir=str(path.parent), delete=False) as temp_file:
+        temp_path = Path(temp_file.name)
     try:
         with zipfile.ZipFile(path, "r") as source, zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as target:
             for item in source.infolist():
